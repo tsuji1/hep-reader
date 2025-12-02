@@ -611,9 +611,15 @@ app.get('/api/books/:bookId/cover', async (req, res) => {
   const bookDir = path.join(convertedDir, bookId);
   const mediaDir = path.join(bookDir, 'media');
   
+  // ブックディレクトリが存在しない場合
+  if (!fs.existsSync(bookDir)) {
+    return res.status(404).json({ error: 'Book directory not found' });
+  }
+  
   // PDFの場合、pages.jsonがないことで判定
   const pagesJsonPath = path.join(bookDir, 'pages.json');
-  const pdfPath = path.join(bookDir, 'original.pdf');
+  // PDFファイルは document.pdf として保存される
+  const pdfPath = path.join(bookDir, 'document.pdf');
   
   // PDFの場合は1ページ目のサムネイルを生成
   if (!fs.existsSync(pagesJsonPath) && fs.existsSync(pdfPath)) {
