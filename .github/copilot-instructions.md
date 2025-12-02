@@ -170,6 +170,28 @@ git add -A && git commit -m "refactor: 説明" # リファクタ
 git add -A && git commit -m "test: 説明"     # テスト追加
 ```
 
+## データベースバックアップ
+
+SQLiteデータベースは定期的にバックアップを取ること:
+
+```bash
+# 手動バックアップ（タイムスタンプ付き）
+cp data/epub-viewer.db data/epub-viewer.db.backup.$(date +%Y%m%d_%H%M%S)
+
+# バックアップ一覧確認
+ls -la data/*.backup.*
+```
+
+**バックアップタイミング:**
+- 大きな機能追加・変更の前
+- デプロイ前
+- データ移行作業の前
+
+**リストア方法:**
+```bash
+cp data/epub-viewer.db.backup.YYYYMMDD_HHMMSS data/epub-viewer.db
+```
+
 ## トラブルシューティング
 
 | 問題 | 確認ポイント |
