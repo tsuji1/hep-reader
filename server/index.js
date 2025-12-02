@@ -22,7 +22,8 @@ function decodeFilename(filename) {
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/converted', express.static(path.join(__dirname, '../converted')));
 
@@ -633,14 +634,37 @@ app.get('/api/books/:bookId/cover', async (req, res) => {
     
     // pdftoppmでサムネイル生成を試みる
     try {
-      execSync(`pdftoppm -png -f 1 -l 1 -scale-to 400 "${pdfPath}" "${path.join(bookDir, 'pdf-thumb')}"`, { timeout: 10000 });
-      const thumbFile = path.join(bookDir, 'pdf-thumb-1.png');
-      if (fs.existsSync(thumbFile)) {
-        fs.renameSync(thumbFile, thumbnailPath);
+      const thumbPrefix = path.join(bookDir, 'pdf-thumb');
+      execSync(`pdftoppm -png -f 1 -l 1 -scale-to 400 "${pdfPath}" "${thumbPrefix}"`, { timeout: 30000 });
+      
+      // pdftoppmは pdf-thumb-1.png または pdf-thumb-01.png を生成する
+      const possibleFiles = [
+        `${thumbPrefix}-1.png`,
+        `${thumbPrefix}-01.png`,
+        `${thumbPrefix}-001.png`
+      ];
+      
+      for (const thumbFile of possibleFiles) {
+        if (fs.existsSync(thumbFile)) {
+          fs.renameSync(thumbFile, thumbnailPath);
+          console.log(`PDF thumbnail generated: ${thumbnailPath}`);
+          return res.sendFile(thumbnailPath);
+        }
+      }
+      
+      // ディレクトリ内のpdf-thumb*.pngを探す
+      const files = fs.readdirSync(bookDir);
+      const thumbMatch = files.find(f => f.startsWith('pdf-thumb') && f.endsWith('.png'));
+      if (thumbMatch) {
+        const matchPath = path.join(bookDir, thumbMatch);
+        fs.renameSync(matchPath, thumbnailPath);
+        console.log(`PDF thumbnail generated from ${thumbMatch}: ${thumbnailPath}`);
         return res.sendFile(thumbnailPath);
       }
+      
+      console.log('pdftoppm ran but no output file found');
     } catch (e) {
-      console.log('pdftoppm not available, returning 404 for PDF cover');
+      console.error('pdftoppm error:', e.message);
     }
     
     return res.status(404).json({ error: 'No cover found for PDF' });
