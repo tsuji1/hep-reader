@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+client/node_modules/
+
+# Data (user uploads, converted files, database)
+data/
+converted/
+uploads/
+epub/
+
+# Build outputs
+client/dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+*.swo
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
