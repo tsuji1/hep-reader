@@ -65,6 +65,32 @@ npm test && docker compose up -d --build
 docker compose logs -f epub-viewer
 ```
 
+## 開発サーバーでのUI確認
+
+デプロイ前にUI変更を確認したい場合は、開発サーバーを使用:
+
+```bash
+# 1. 開発サーバー起動（ホットリロード対応）
+npm run dev
+
+# サーバーが起動すると:
+#   - Vite (client): http://localhost:3000 (または空きポート)
+#   - Express (server): http://localhost:3001
+
+# 2. ブラウザで確認
+open http://localhost:3000
+
+# 3. 確認が終わったら Ctrl+C で停止
+
+# 4. 問題なければデプロイ
+npm test && docker compose up -d --build
+```
+
+**開発サーバーのメリット:**
+- コード変更が即座に反映（ホットリロード）
+- ブラウザのDevToolsでデバッグ可能
+- 本番DBを使用するため実データで確認可能
+
 ## コード規約
 
 ### バックエンド (server/)

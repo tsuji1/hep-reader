@@ -418,6 +418,50 @@ app.delete('/api/bookmarks/:bookmarkId', (req, res) => {
   }
 });
 
+// Clips APIs (screenshot captures)
+app.get('/api/books/:bookId/clips', (req, res) => {
+  try {
+    const clips = db.getClips(req.params.bookId);
+    res.json(clips);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/clips/:clipId', (req, res) => {
+  try {
+    const clip = db.getClip(req.params.clipId);
+    if (!clip) {
+      return res.status(404).json({ error: 'Clip not found' });
+    }
+    res.json(clip);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/books/:bookId/clips', (req, res) => {
+  try {
+    const { pageNum, imageData, note } = req.body;
+    if (!imageData) {
+      return res.status(400).json({ error: 'imageData is required' });
+    }
+    const clip = db.addClip(req.params.bookId, pageNum, imageData, note);
+    res.json(clip);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/clips/:clipId', (req, res) => {
+  try {
+    db.deleteClip(req.params.clipId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Reading progress
 app.get('/api/books/:bookId/progress', (req, res) => {
   try {

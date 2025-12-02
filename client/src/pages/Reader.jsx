@@ -1,7 +1,8 @@
 import axios from 'axios'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import PdfViewer from '../components/PdfViewer'
+import ImagePopup from '../components/ImagePopup'
 
 function Reader() {
   const { bookId } = useParams()
@@ -11,6 +12,7 @@ function Reader() {
   const [pages, setPages] = useState([])
   const [loading, setLoading] = useState(true)
   const [bookmarks, setBookmarks] = useState([])
+  const [clips, setClips] = useState([])
   const [toc, setToc] = useState([])
   const [sidebarTab, setSidebarTab] = useState('toc')
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -21,6 +23,16 @@ function Reader() {
   const [viewMode, setViewMode] = useState('scroll') // 'scroll' or 'page'
   const [isPdf, setIsPdf] = useState(false)
   const [pdfTotalPages, setPdfTotalPages] = useState(0)
+  
+  // 画像ポップアップ
+  const [popupImage, setPopupImage] = useState(null)
+  
+  // クリップ機能
+  const [clipMode, setClipMode] = useState(false)
+  const [showClipModal, setShowClipModal] = useState(false)
+  const [clipImageData, setClipImageData] = useState(null)
+  const [clipPageNum, setClipPageNum] = useState(1)
+  const [clipNote, setClipNote] = useState('')
   
   const contentRef = useRef(null)
   const pageRefs = useRef({})
@@ -44,6 +56,7 @@ function Reader() {
           const initialPage = progressRes.data.currentPage || 1
           setCurrentPage(initialPage)
           fetchBookmarks()
+          fetchClips()
           setLoading(false)
           return
         }
@@ -62,8 +75,9 @@ function Reader() {
         const tocRes = await axios.get(`/api/books/${bookId}/toc`)
         setToc(tocRes.data.toc || [])
         
-        // Fetch bookmarks
+        // Fetch bookmarks and clips
         fetchBookmarks()
+        fetchClips()
         
         setLoading(false)
       } catch (error) {
@@ -124,12 +138,40 @@ function Reader() {
     }
   }, [bookId, currentPage, pages.length, viewMode, isPdf])
 
+  // EPUB画像クリックハンドラを設定
+  useEffect(() => {
+    if (isPdf || !contentRef.current) return
+
+    const handleImageClick = (e) => {
+      if (e.target.tagName === 'IMG') {
+        e.preventDefault()
+        setPopupImage({
+          src: e.target.src,
+          alt: e.target.alt || '画像'
+        })
+      }
+    }
+
+    const container = contentRef.current
+    container.addEventListener('click', handleImageClick)
+    return () => container.removeEventListener('click', handleImageClick)
+  }, [isPdf, loading])
+
   const fetchBookmarks = async () => {
     try {
       const res = await axios.get(`/api/books/${bookId}/bookmarks`)
       setBookmarks(res.data)
     } catch (error) {
       console.error('Failed to fetch bookmarks:', error)
+    }
+  }
+
+  const fetchClips = async () => {
+    try {
+      const res = await axios.get(`/api/books/${bookId}/clips`)
+      setClips(res.data)
+    } catch (error) {
+      console.error('Failed to fetch clips:', error)
     }
   }
 
@@ -191,6 +233,55 @@ function Reader() {
       console.error('Failed to delete bookmark:', error)
     }
   }
+
+  // クリップ保存
+  const saveClip = async () => {
+    try {
+      await axios.post(`/api/books/${bookId}/clips`, {
+        pageNum: clipPageNum,
+        imageData: clipImageData,
+        note: clipNote
+      })
+      fetchClips()
+      setShowClipModal(false)
+      setClipImageData(null)
+      setClipNote('')
+      setClipMode(false)
+    } catch (error) {
+      console.error('Failed to save clip:', error)
+    }
+  }
+
+  // クリップ削除
+  const deleteClip = async (e, clipId) => {
+    e.stopPropagation()
+    try {
+      await axios.delete(`/api/clips/${clipId}`)
+      fetchClips()
+    } catch (error) {
+      console.error('Failed to delete clip:', error)
+    }
+  }
+
+  // クリップ画像を表示
+  const showClipImage = async (clipId) => {
+    try {
+      const res = await axios.get(`/api/clips/${clipId}`)
+      setPopupImage({
+        src: res.data.image_data,
+        alt: res.data.note || 'クリップ画像'
+      })
+    } catch (error) {
+      console.error('Failed to load clip:', error)
+    }
+  }
+
+  // PDFからクリップを受け取るコールバック
+  const handleClipCapture = useCallback((pageNum, imageData) => {
+    setClipPageNum(pageNum)
+    setClipImageData(imageData)
+    setShowClipModal(true)
+  }, [])
 
   const isCurrentPageBookmarked = bookmarks.some(b => b.page_num === currentPage)
 
@@ -265,14 +356,20 @@ function Reader() {
               className={sidebarTab === 'toc' ? 'active' : ''}
               onClick={() => setSidebarTab('toc')}
             >
-              目次 ({toc.length})
+              目次
             </button>
           )}
           <button
-            className={sidebarTab === 'bookmarks' || isPdf ? 'active' : ''}
+            className={sidebarTab === 'bookmarks' ? 'active' : ''}
             onClick={() => setSidebarTab('bookmarks')}
           >
             しおり ({bookmarks.length})
+          </button>
+          <button
+            className={sidebarTab === 'clips' ? 'active' : ''}
+            onClick={() => setSidebarTab('clips')}
+          >
+            📷 ({clips.length})
           </button>
         </div>
         
@@ -296,7 +393,7 @@ function Reader() {
                 ))}
               </div>
             )
-          ) : (
+          ) : sidebarTab === 'bookmarks' ? (
             bookmarks.length === 0 ? (
               <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
                 しおりがありません<br />
@@ -314,6 +411,32 @@ function Reader() {
                   <button
                     className="delete"
                     onClick={(e) => deleteBookmark(e, bookmark.id)}
+                    title="削除"
+                  >
+                    🗑
+                  </button>
+                </div>
+              ))
+            )
+          ) : (
+            // クリップタブ
+            clips.length === 0 ? (
+              <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
+                クリップがありません<br />
+                <small>{isPdf ? '📷ボタンで範囲選択してキャプチャ' : '画像をクリックして保存'}</small>
+              </p>
+            ) : (
+              clips.map((clip) => (
+                <div
+                  key={clip.id}
+                  className="clip-item"
+                  onClick={() => showClipImage(clip.id)}
+                >
+                  <span className="page">p.{clip.page_num}</span>
+                  <span className="note">{clip.note || '(メモなし)'}</span>
+                  <button
+                    className="delete"
+                    onClick={(e) => deleteClip(e, clip.id)}
                     title="削除"
                   >
                     🗑
@@ -346,6 +469,16 @@ function Reader() {
             >
               {isCurrentPageBookmarked ? '🔖' : '📑'} しおり
             </button>
+
+            {isPdf && (
+              <button
+                className={`clip-btn ${clipMode ? 'active' : ''}`}
+                onClick={() => setClipMode(!clipMode)}
+                title={clipMode ? 'クリップモード終了' : '範囲選択してクリップ'}
+              >
+                📷 クリップ
+              </button>
+            )}
             
             <div className="view-mode-toggle">
               <button
@@ -402,6 +535,8 @@ function Reader() {
               onPageChange={handlePdfPageChange}
               onTotalPagesChange={handlePdfTotalPages}
               viewMode={viewMode}
+              clipMode={clipMode}
+              onClipCapture={handleClipCapture}
             />
           ) : viewMode === 'scroll' ? (
             <div className="content-continuous">
@@ -413,7 +548,7 @@ function Reader() {
                   data-page={page.pageNum}
                 >
                   <div
-                    className="content-html"
+                    className="content-html clickable-images"
                     lang={book.language || 'en'}
                     dangerouslySetInnerHTML={{ __html: fixContent(page.content) }}
                   />
@@ -424,7 +559,7 @@ function Reader() {
             <div className="content-single-page">
               {pages[currentPage - 1] && (
                 <div
-                  className="content-html"
+                  className="content-html clickable-images"
                   lang={book.language || 'en'}
                   dangerouslySetInnerHTML={{ __html: fixContent(pages[currentPage - 1].content) }}
                 />
@@ -433,6 +568,15 @@ function Reader() {
           )}
         </div>
       </main>
+
+      {/* 画像ポップアップ */}
+      {popupImage && (
+        <ImagePopup
+          src={popupImage.src}
+          alt={popupImage.alt}
+          onClose={() => setPopupImage(null)}
+        />
+      )}
 
       {/* Bookmark Modal */}
       {showBookmarkModal && (
@@ -457,6 +601,44 @@ function Reader() {
               </button>
               <button className="primary" onClick={addBookmark}>
                 追加
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clip Modal */}
+      {showClipModal && (
+        <div className="modal-overlay" onClick={() => setShowClipModal(false)}>
+          <div className="modal clip-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>📷 クリップを保存</h3>
+            <p style={{ marginBottom: '15px', color: '#666' }}>
+              ページ {clipPageNum} のクリップを保存します
+            </p>
+            {clipImageData && (
+              <div className="clip-preview">
+                <img src={clipImageData} alt="クリップ" />
+              </div>
+            )}
+            <textarea
+              placeholder="メモ (任意)"
+              value={clipNote}
+              onChange={(e) => setClipNote(e.target.value)}
+              rows={2}
+            />
+            <div className="buttons">
+              <button
+                className="secondary"
+                onClick={() => {
+                  setShowClipModal(false)
+                  setClipImageData(null)
+                  setClipNote('')
+                }}
+              >
+                キャンセル
+              </button>
+              <button className="primary" onClick={saveClip}>
+                保存
               </button>
             </div>
           </div>

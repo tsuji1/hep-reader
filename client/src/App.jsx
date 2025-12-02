@@ -1,6 +1,5 @@
 import { Route, Routes } from 'react-router-dom'
 import Home from './pages/Home'
-import PdfViewer from './pages/PdfViewer'
 import Reader from './pages/Reader'
 
 function App() {
@@ -8,7 +7,8 @@ function App() {
     <Routes>
       <Route path="/" element={<Home />} />
       <Route path="/read/:bookId" element={<Reader />} />
-      <Route path="/pdf/:bookId" element={<PdfViewer />} />
+      {/* PDFも同じReaderを使用 */}
+      <Route path="/pdf/:bookId" element={<Reader />} />
     </Routes>
   )
 }

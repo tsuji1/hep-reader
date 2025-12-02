@@ -59,6 +59,20 @@ try {
   // Column already exists
 }
 
+// Create clips table for screenshot captures
+db.exec(`
+  CREATE TABLE IF NOT EXISTS clips (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    page_num INTEGER NOT NULL,
+    image_data TEXT NOT NULL,
+    note TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_clips_book_id ON clips(book_id);
+`);
+
 module.exports = {
   // Books
   addBook(id, title, originalFilename, totalPages, bookType = 'epub') {
@@ -162,5 +176,34 @@ module.exports = {
   getProgress(bookId) {
     const stmt = db.prepare('SELECT * FROM reading_progress WHERE book_id = ?');
     return stmt.get(bookId);
+  },
+
+  // Clips (screenshot captures)
+  addClip(bookId, pageNum, imageData, note = '') {
+    const id = uuidv4();
+    const stmt = db.prepare(`
+      INSERT INTO clips (id, book_id, page_num, image_data, note)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    stmt.run(id, bookId, pageNum, imageData, note);
+    return { id, book_id: bookId, page_num: pageNum, note, created_at: new Date().toISOString() };
+  },
+
+  getClips(bookId) {
+    const stmt = db.prepare(`
+      SELECT id, book_id, page_num, note, created_at FROM clips 
+      WHERE book_id = ? ORDER BY created_at DESC
+    `);
+    return stmt.all(bookId);
+  },
+
+  getClip(id) {
+    const stmt = db.prepare('SELECT * FROM clips WHERE id = ?');
+    return stmt.get(id);
+  },
+
+  deleteClip(id) {
+    const stmt = db.prepare('DELETE FROM clips WHERE id = ?');
+    stmt.run(id);
   }
 };
