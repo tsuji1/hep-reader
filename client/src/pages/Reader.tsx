@@ -1,48 +1,52 @@
 import axios from 'axios'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import PdfViewer from '../components/PdfViewer'
-import ImagePopup from '../components/ImagePopup'
+import { openImageInNewWindow, openClipInNewWindow, fixEpubImagePaths } from '../utils/window'
+import type { Book, Bookmark, Clip, ClipPosition, TocItem, PageContent } from '../types'
 
-function Reader() {
-  const { bookId } = useParams()
-  const [book, setBook] = useState(null)
-  const [currentPage, setCurrentPage] = useState(1)
-  const [totalPages, setTotalPages] = useState(1)
-  const [pages, setPages] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [bookmarks, setBookmarks] = useState([])
-  const [clips, setClips] = useState([])
-  const [toc, setToc] = useState([])
-  const [sidebarTab, setSidebarTab] = useState('toc')
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const [showBookmarkModal, setShowBookmarkModal] = useState(false)
-  const [bookmarkNote, setBookmarkNote] = useState('')
-  const [showPageJumpModal, setShowPageJumpModal] = useState(false)
-  const [jumpPageInput, setJumpPageInput] = useState('')
-  const [viewMode, setViewMode] = useState('scroll') // 'scroll' or 'page'
-  const [isPdf, setIsPdf] = useState(false)
-  const [pdfTotalPages, setPdfTotalPages] = useState(0)
-  
-  // 画像ポップアップ
-  const [popupImage, setPopupImage] = useState(null)
+type SidebarTab = 'toc' | 'bookmarks' | 'clips'
+type ViewMode = 'scroll' | 'page'
+
+function Reader(): JSX.Element {
+  const { bookId } = useParams<{ bookId: string }>()
+  const [book, setBook] = useState<Book | null>(null)
+  const [currentPage, setCurrentPage] = useState<number>(1)
+  const [totalPages, setTotalPages] = useState<number>(1)
+  const [pages, setPages] = useState<PageContent[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
+  const [bookmarks, setBookmarks] = useState<Bookmark[]>([])
+  const [clips, setClips] = useState<Clip[]>([])
+  const [toc, setToc] = useState<TocItem[]>([])
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('toc')
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true)
+  const [showBookmarkModal, setShowBookmarkModal] = useState<boolean>(false)
+  const [bookmarkNote, setBookmarkNote] = useState<string>('')
+  const [showPageJumpModal, setShowPageJumpModal] = useState<boolean>(false)
+  const [jumpPageInput, setJumpPageInput] = useState<string>('')
+  const [viewMode, setViewMode] = useState<ViewMode>('scroll')
+  const [isPdf, setIsPdf] = useState<boolean>(false)
+  const [pdfTotalPages, setPdfTotalPages] = useState<number>(0)
   
   // クリップ機能
-  const [clipMode, setClipMode] = useState(false)
-  const [showClipModal, setShowClipModal] = useState(false)
-  const [clipImageData, setClipImageData] = useState(null)
-  const [clipPageNum, setClipPageNum] = useState(1)
-  const [clipNote, setClipNote] = useState('')
+  const [clipMode, setClipMode] = useState<boolean>(false)
+  const [showClipModal, setShowClipModal] = useState<boolean>(false)
+  const [clipImageData, setClipImageData] = useState<string | null>(null)
+  const [clipPageNum, setClipPageNum] = useState<number>(1)
+  const [clipNote, setClipNote] = useState<string>('')
+  const [clipPosition, setClipPosition] = useState<ClipPosition | null>(null)
   
-  const contentRef = useRef(null)
-  const pageRefs = useRef({})
-  const isScrollingToPage = useRef(false)
+  const contentRef = useRef<HTMLDivElement>(null)
+  const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
+  const isScrollingToPage = useRef<boolean>(false)
 
   // Fetch book info and all pages
   useEffect(() => {
-    const fetchBook = async () => {
+    const fetchBook = async (): Promise<void> => {
+      if (!bookId) return
+      
       try {
-        const res = await axios.get(`/api/books/${bookId}`)
+        const res = await axios.get<Book>(`/api/books/${bookId}`)
         setBook(res.data)
         
         // PDFの場合は別処理 (category または original_filename で判定)
@@ -52,7 +56,7 @@ function Reader() {
         if (isPdfBook) {
           setIsPdf(true)
           // PDFの読み込み進捗を取得
-          const progressRes = await axios.get(`/api/books/${bookId}/progress`)
+          const progressRes = await axios.get<{ currentPage: number }>(`/api/books/${bookId}/progress`)
           const initialPage = progressRes.data.currentPage || 1
           setCurrentPage(initialPage)
           fetchBookmarks()
@@ -62,17 +66,17 @@ function Reader() {
         }
         
         // Fetch all pages (EPUB)
-        const pagesRes = await axios.get(`/api/books/${bookId}/all-pages`)
+        const pagesRes = await axios.get<{ pages: PageContent[]; total: number }>(`/api/books/${bookId}/all-pages`)
         setPages(pagesRes.data.pages)
         setTotalPages(pagesRes.data.total)
         
         // Determine initial page from saved progress
-        const progressRes = await axios.get(`/api/books/${bookId}/progress`)
+        const progressRes = await axios.get<{ currentPage: number }>(`/api/books/${bookId}/progress`)
         const initialPage = progressRes.data.currentPage || 1
         setCurrentPage(initialPage)
         
         // Fetch TOC
-        const tocRes = await axios.get(`/api/books/${bookId}/toc`)
+        const tocRes = await axios.get<{ toc: TocItem[] }>(`/api/books/${bookId}/toc`)
         setToc(tocRes.data.toc || [])
         
         // Fetch bookmarks and clips
@@ -102,7 +106,7 @@ function Reader() {
   useEffect(() => {
     if (viewMode !== 'scroll' || isPdf) return
     
-    const handleScroll = () => {
+    const handleScroll = (): void => {
       if (isScrollingToPage.current || !contentRef.current) return
       
       const container = contentRef.current
@@ -138,16 +142,18 @@ function Reader() {
     }
   }, [bookId, currentPage, pages.length, viewMode, isPdf])
 
-  // EPUB画像クリックハンドラを設定
+  // EPUB画像クリックハンドラを設定（別ウィンドウで開く）
   useEffect(() => {
     if (isPdf || !contentRef.current) return
 
-    const handleImageClick = (e) => {
-      if (e.target.tagName === 'IMG') {
+    const handleImageClick = (e: Event): void => {
+      const target = e.target as HTMLElement
+      if (target.tagName === 'IMG') {
         e.preventDefault()
-        setPopupImage({
-          src: e.target.src,
-          alt: e.target.alt || '画像'
+        const imgElement = target as HTMLImageElement
+        openImageInNewWindow({
+          src: imgElement.src,
+          alt: imgElement.alt || '画像'
         })
       }
     }
@@ -157,25 +163,25 @@ function Reader() {
     return () => container.removeEventListener('click', handleImageClick)
   }, [isPdf, loading])
 
-  const fetchBookmarks = async () => {
+  const fetchBookmarks = async (): Promise<void> => {
     try {
-      const res = await axios.get(`/api/books/${bookId}/bookmarks`)
+      const res = await axios.get<Bookmark[]>(`/api/books/${bookId}/bookmarks`)
       setBookmarks(res.data)
     } catch (error) {
       console.error('Failed to fetch bookmarks:', error)
     }
   }
 
-  const fetchClips = async () => {
+  const fetchClips = async (): Promise<void> => {
     try {
-      const res = await axios.get(`/api/books/${bookId}/clips`)
+      const res = await axios.get<Clip[]>(`/api/books/${bookId}/clips`)
       setClips(res.data)
     } catch (error) {
       console.error('Failed to fetch clips:', error)
     }
   }
 
-  const scrollToPage = (page, smooth = true) => {
+  const scrollToPage = (page: number, smooth: boolean = true): void => {
     const pageEl = pageRefs.current[page]
     if (pageEl && contentRef.current) {
       isScrollingToPage.current = true
@@ -187,7 +193,7 @@ function Reader() {
     }
   }
 
-  const goToPage = (page) => {
+  const goToPage = (page: number): void => {
     const maxPages = isPdf ? pdfTotalPages : totalPages
     if (page >= 1 && page <= maxPages) {
       setCurrentPage(page)
@@ -199,18 +205,18 @@ function Reader() {
   }
 
   // PDFのページ変更ハンドラ
-  const handlePdfPageChange = (page) => {
+  const handlePdfPageChange = (page: number): void => {
     setCurrentPage(page)
     axios.post(`/api/books/${bookId}/progress`, { currentPage: page })
   }
 
   // PDFの総ページ数を受け取る
-  const handlePdfTotalPages = (total) => {
+  const handlePdfTotalPages = (total: number): void => {
     setPdfTotalPages(total)
     setTotalPages(total)
   }
 
-  const addBookmark = async () => {
+  const addBookmark = async (): Promise<void> => {
     try {
       await axios.post(`/api/books/${bookId}/bookmarks`, {
         pageNum: currentPage,
@@ -224,7 +230,7 @@ function Reader() {
     }
   }
 
-  const deleteBookmark = async (e, bookmarkId) => {
+  const deleteBookmark = async (e: MouseEvent, bookmarkId: string): Promise<void> => {
     e.stopPropagation()
     try {
       await axios.delete(`/api/bookmarks/${bookmarkId}`)
@@ -234,11 +240,8 @@ function Reader() {
     }
   }
 
-  // クリップの位置情報を保持
-  const [clipPosition, setClipPosition] = useState(null)
-
   // クリップ保存
-  const saveClip = async () => {
+  const saveClip = async (): Promise<void> => {
     try {
       await axios.post(`/api/books/${bookId}/clips`, {
         pageNum: clipPageNum,
@@ -258,7 +261,7 @@ function Reader() {
   }
 
   // クリップ削除
-  const deleteClip = async (e, clipId) => {
+  const deleteClip = async (e: MouseEvent, clipId: string): Promise<void> => {
     e.stopPropagation()
     try {
       await axios.delete(`/api/clips/${clipId}`)
@@ -268,61 +271,8 @@ function Reader() {
     }
   }
 
-  // クリップ画像を別ウィンドウで表示
-  const openClipInNewWindow = (clip) => {
-    // 新しいウィンドウで画像を開く
-    const newWindow = window.open('', '_blank', 'width=600,height=500,resizable=yes,scrollbars=yes')
-    if (newWindow) {
-      newWindow.document.write(`
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>${clip.note || 'クリップ画像'} - p.${clip.page_num}</title>
-          <style>
-            body {
-              margin: 0;
-              padding: 20px;
-              background: #1a1a2e;
-              display: flex;
-              flex-direction: column;
-              align-items: center;
-              min-height: 100vh;
-              box-sizing: border-box;
-            }
-            img {
-              max-width: 100%;
-              height: auto;
-              border-radius: 8px;
-              box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-            }
-            .info {
-              color: #fff;
-              margin-top: 15px;
-              font-family: sans-serif;
-              text-align: center;
-            }
-            .note {
-              color: #aaa;
-              font-size: 14px;
-              margin-top: 8px;
-            }
-          </style>
-        </head>
-        <body>
-          <img src="${clip.image_data}" alt="クリップ画像" />
-          <div class="info">
-            <strong>ページ ${clip.page_num}</strong>
-            ${clip.note ? `<div class="note">${clip.note}</div>` : ''}
-          </div>
-        </body>
-        </html>
-      `)
-      newWindow.document.close()
-    }
-  }
-
   // PDFからクリップを受け取るコールバック
-  const handleClipCapture = useCallback((pageNum, imageData, position) => {
+  const handleClipCapture = useCallback((pageNum: number, imageData: string, position: ClipPosition): void => {
     setClipPageNum(pageNum)
     setClipImageData(imageData)
     setClipPosition(position)
@@ -331,7 +281,7 @@ function Reader() {
 
   const isCurrentPageBookmarked = bookmarks.some(b => b.page_num === currentPage)
 
-  const handlePageJump = () => {
+  const handlePageJump = (): void => {
     const pageNum = parseInt(jumpPageInput)
     const maxPages = isPdf ? pdfTotalPages : totalPages
     if (pageNum >= 1 && pageNum <= maxPages) {
@@ -344,12 +294,8 @@ function Reader() {
   }
 
   // Fix image paths in content
-  const fixContent = (content) => {
-    return content
-      .replace(/src="\/home\/[^"]*\/media\//g, `src="/api/books/${bookId}/media/`)
-      .replace(/src="media\//g, `src="/api/books/${bookId}/media/`)
-      .replace(/src="\.\/media\//g, `src="/api/books/${bookId}/media/`)
-      .replace(/max-width:\s*800px/g, 'max-width: 100%')
+  const fixContent = (content: string): string => {
+    return fixEpubImagePaths(content, bookId || '')
   }
 
   if (!book) {
@@ -596,7 +542,7 @@ function Reader() {
               {pages.map((page) => (
                 <div
                   key={page.pageNum}
-                  ref={(el) => pageRefs.current[page.pageNum] = el}
+                  ref={(el) => { pageRefs.current[page.pageNum] = el }}
                   className={`page-section ${page.pageNum === currentPage ? 'current' : ''}`}
                   data-page={page.pageNum}
                 >
@@ -621,15 +567,6 @@ function Reader() {
           )}
         </div>
       </main>
-
-      {/* 画像ポップアップ */}
-      {popupImage && (
-        <ImagePopup
-          src={popupImage.src}
-          alt={popupImage.alt}
-          onClose={() => setPopupImage(null)}
-        />
-      )}
 
       {/* Bookmark Modal */}
       {showBookmarkModal && (

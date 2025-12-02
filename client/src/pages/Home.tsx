@@ -1,30 +1,33 @@
 import axios from 'axios'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
+import type { Book } from '../types'
 
-function Home() {
-  const [books, setBooks] = useState([])
-  const [loading, setLoading] = useState(true)
-  const [uploading, setUploading] = useState(false)
-  const [uploadProgress, setUploadProgress] = useState('')
-  const [dragging, setDragging] = useState(false)
-  const [sortBy, setSortBy] = useState('lastRead') // 'lastRead', 'title', 'added'
-  const [editingBook, setEditingBook] = useState(null)
-  const [editTitle, setEditTitle] = useState('')
-  const [editLanguage, setEditLanguage] = useState('en')
-  const [coverPreview, setCoverPreview] = useState(null)
-  const [coverFile, setCoverFile] = useState(null)
-  const [uploadingCover, setUploadingCover] = useState(false)
-  const coverInputRef = useRef(null)
+type SortBy = 'lastRead' | 'title' | 'added'
+
+function Home(): JSX.Element {
+  const [books, setBooks] = useState<Book[]>([])
+  const [loading, setLoading] = useState<boolean>(true)
+  const [uploading, setUploading] = useState<boolean>(false)
+  const [uploadProgress, setUploadProgress] = useState<string>('')
+  const [dragging, setDragging] = useState<boolean>(false)
+  const [sortBy, setSortBy] = useState<SortBy>('lastRead')
+  const [editingBook, setEditingBook] = useState<Book | null>(null)
+  const [editTitle, setEditTitle] = useState<string>('')
+  const [editLanguage, setEditLanguage] = useState<string>('en')
+  const [coverPreview, setCoverPreview] = useState<string | null>(null)
+  const [coverFile, setCoverFile] = useState<File | null>(null)
+  const [uploadingCover, setUploadingCover] = useState<boolean>(false)
+  const coverInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchBooks()
   }, [])
 
-  const fetchBooks = async () => {
+  const fetchBooks = async (): Promise<void> => {
     try {
-      const res = await axios.get('/api/books')
+      const res = await axios.get<Book[]>('/api/books')
       setBooks(res.data)
     } catch (error) {
       console.error('Failed to fetch books:', error)
@@ -33,9 +36,9 @@ function Home() {
     }
   }
 
-  const handleUpload = async (file) => {
+  const handleUpload = async (file: File | undefined): Promise<void> => {
     const ext = file?.name.split('.').pop()?.toLowerCase()
-    if (!file || !['epub', 'pdf'].includes(ext)) {
+    if (!file || !['epub', 'pdf'].includes(ext || '')) {
       alert('EPUBまたはPDFファイルを選択してください')
       return
     }
@@ -48,7 +51,7 @@ function Home() {
 
     try {
       setUploadProgress(ext === 'pdf' ? '保存中...' : '変換中...')
-      const res = await axios.post('/api/upload', formData, {
+      const res = await axios.post<{ bookId: string; bookType: string }>('/api/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
       
@@ -63,38 +66,39 @@ function Home() {
           navigate(`/read/${res.data.bookId}`)
         }
       }, 500)
-    } catch (error) {
+    } catch (error: unknown) {
       console.error('Upload failed:', error)
-      alert(error.response?.data?.error || 'アップロードに失敗しました')
+      const axiosError = error as { response?: { data?: { error?: string } } }
+      alert(axiosError.response?.data?.error || 'アップロードに失敗しました')
     } finally {
       setUploading(false)
       setUploadProgress('')
     }
   }
 
-  const handleFileSelect = (e) => {
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>): void => {
     const file = e.target.files?.[0]
     if (file) handleUpload(file)
   }
 
-  const handleDrop = useCallback((e) => {
+  const handleDrop = useCallback((e: DragEvent<HTMLDivElement>): void => {
     e.preventDefault()
     setDragging(false)
     const file = e.dataTransfer.files?.[0]
     if (file) handleUpload(file)
   }, [])
 
-  const handleDragOver = useCallback((e) => {
+  const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>): void => {
     e.preventDefault()
     setDragging(true)
   }, [])
 
-  const handleDragLeave = useCallback((e) => {
+  const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>): void => {
     e.preventDefault()
     setDragging(false)
   }, [])
 
-  const handleDelete = async (e, bookId) => {
+  const handleDelete = async (e: MouseEvent, bookId: string): Promise<void> => {
     e.stopPropagation()
     if (!confirm('この本を削除しますか？')) return
 
@@ -113,15 +117,15 @@ function Home() {
       case 'title':
         return a.title.localeCompare(b.title, 'ja')
       case 'added':
-        return new Date(b.created_at) - new Date(a.created_at)
+        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       case 'lastRead':
       default:
-        return new Date(b.updated_at) - new Date(a.updated_at)
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
     }
   })
 
   // Open book
-  const openBook = (book) => {
+  const openBook = (book: Book): void => {
     if (book.book_type === 'pdf') {
       navigate(`/pdf/${book.id}`)
     } else {
@@ -130,7 +134,7 @@ function Home() {
   }
 
   // Open edit modal
-  const openEditModal = (e, book) => {
+  const openEditModal = (e: MouseEvent, book: Book): void => {
     e.stopPropagation()
     setEditingBook(book)
     setEditTitle(book.title)
@@ -140,7 +144,7 @@ function Home() {
   }
 
   // Handle cover image selection
-  const handleCoverSelect = (e) => {
+  const handleCoverSelect = (e: ChangeEvent<HTMLInputElement>): void => {
     const file = e.target.files?.[0]
     if (file) {
       if (!file.type.startsWith('image/')) {
@@ -149,13 +153,13 @@ function Home() {
       }
       setCoverFile(file)
       const reader = new FileReader()
-      reader.onload = (e) => setCoverPreview(e.target.result)
+      reader.onload = (e) => setCoverPreview(e.target?.result as string)
       reader.readAsDataURL(file)
     }
   }
 
   // Reset cover to original
-  const handleResetCover = async () => {
+  const handleResetCover = async (): Promise<void> => {
     if (!editingBook) return
     if (!confirm('カバー画像を元に戻しますか？')) return
     
@@ -171,7 +175,7 @@ function Home() {
   }
 
   // Save book edits
-  const saveBookEdit = async () => {
+  const saveBookEdit = async (): Promise<void> => {
     if (!editingBook) return
     
     setUploadingCover(true)
@@ -219,7 +223,7 @@ function Home() {
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            onClick={() => document.getElementById('file-input').click()}
+            onClick={() => document.getElementById('file-input')?.click()}
           >
             <input
               id="file-input"
@@ -250,7 +254,7 @@ function Home() {
               <label style={{ marginRight: '8px', color: '#666', fontSize: '0.9rem' }}>並び替え:</label>
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) => setSortBy(e.target.value as SortBy)}
                 className="sort-select"
               >
                 <option value="lastRead">最終閲覧日時</option>
@@ -295,8 +299,9 @@ function Home() {
                       src={`/api/books/${book.id}/cover`} 
                       alt={book.title}
                       onError={(e) => {
-                        e.target.style.display = 'none'
-                        e.target.parentElement.classList.add('no-cover')
+                        const target = e.target as HTMLImageElement
+                        target.style.display = 'none'
+                        target.parentElement?.classList.add('no-cover')
                       }}
                     />
                     <div className="no-cover-icon">{book.book_type === 'pdf' ? '📄' : '📖'}</div>
@@ -361,8 +366,11 @@ function Home() {
                     alt="カバー"
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={(e) => {
-                      e.target.style.display = 'none'
-                      e.target.parentElement.innerHTML = '<span style="font-size: 2rem">📖</span>'
+                      const target = e.target as HTMLImageElement
+                      target.style.display = 'none'
+                      if (target.parentElement) {
+                        target.parentElement.innerHTML = '<span style="font-size: 2rem">📖</span>'
+                      }
                     }}
                   />
                 </div>
