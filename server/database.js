@@ -52,15 +52,22 @@ try {
   // Column already exists
 }
 
+// Migration: Add book_type column if not exists (epub, pdf)
+try {
+  db.exec(`ALTER TABLE books ADD COLUMN book_type TEXT DEFAULT 'epub'`);
+} catch (e) {
+  // Column already exists
+}
+
 module.exports = {
   // Books
-  addBook(id, title, originalFilename, totalPages) {
+  addBook(id, title, originalFilename, totalPages, bookType = 'epub') {
     const stmt = db.prepare(`
-      INSERT INTO books (id, title, original_filename, total_pages)
-      VALUES (?, ?, ?, ?)
+      INSERT INTO books (id, title, original_filename, total_pages, book_type)
+      VALUES (?, ?, ?, ?, ?)
     `);
-    stmt.run(id, title, originalFilename, totalPages);
-    return { id, title, originalFilename, totalPages };
+    stmt.run(id, title, originalFilename, totalPages, bookType);
+    return { id, title, originalFilename, totalPages, bookType };
   },
 
   getAllBooks() {

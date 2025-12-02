@@ -34,8 +34,9 @@ function Home() {
   }
 
   const handleUpload = async (file) => {
-    if (!file || !file.name.endsWith('.epub')) {
-      alert('EPUBファイルを選択してください')
+    const ext = file?.name.split('.').pop()?.toLowerCase()
+    if (!file || !['epub', 'pdf'].includes(ext)) {
+      alert('EPUBまたはPDFファイルを選択してください')
       return
     }
 
@@ -43,10 +44,10 @@ function Home() {
     setUploadProgress('アップロード中...')
 
     const formData = new FormData()
-    formData.append('epub', file)
+    formData.append('file', file)
 
     try {
-      setUploadProgress('変換中...')
+      setUploadProgress(ext === 'pdf' ? '保存中...' : '変換中...')
       const res = await axios.post('/api/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
@@ -54,9 +55,13 @@ function Home() {
       setUploadProgress('完了!')
       fetchBooks()
       
-      // Navigate to reader
+      // Navigate to reader or PDF viewer
       setTimeout(() => {
-        navigate(`/read/${res.data.bookId}`)
+        if (res.data.bookType === 'pdf') {
+          navigate(`/pdf/${res.data.bookId}`)
+        } else {
+          navigate(`/read/${res.data.bookId}`)
+        }
       }, 500)
     } catch (error) {
       console.error('Upload failed:', error)
@@ -117,7 +122,11 @@ function Home() {
 
   // Open book
   const openBook = (book) => {
-    navigate(`/read/${book.id}`)
+    if (book.book_type === 'pdf') {
+      navigate(`/pdf/${book.id}`)
+    } else {
+      navigate(`/read/${book.id}`)
+    }
   }
 
   // Open edit modal
@@ -215,7 +224,7 @@ function Home() {
             <input
               id="file-input"
               type="file"
-              accept=".epub"
+              accept=".epub,.pdf"
               onChange={handleFileSelect}
               disabled={uploading}
             />
@@ -227,8 +236,8 @@ function Home() {
             ) : (
               <>
                 <div className="upload-icon">📖</div>
-                <p>EPUBファイルをドロップ、またはクリックして選択</p>
-                <p className="hint">pandocでHTMLに変換されます</p>
+                <p>EPUB / PDFファイルをドロップ、またはクリックして選択</p>
+                <p className="hint">EPUBはHTMLに変換、PDFはそのまま表示</p>
               </>
             )}
           </div>
@@ -290,13 +299,16 @@ function Home() {
                         e.target.parentElement.classList.add('no-cover')
                       }}
                     />
-                    <div className="no-cover-icon">📖</div>
+                    <div className="no-cover-icon">{book.book_type === 'pdf' ? '📄' : '📖'}</div>
+                    {book.book_type === 'pdf' && (
+                      <div className="book-type-badge">PDF</div>
+                    )}
                   </div>
                   <div className="book-info">
                     <h3>{book.title}</h3>
                     <div className="meta">
-                      {book.total_pages}ページ
-                      {book.current_page && (
+                      {book.book_type === 'pdf' ? 'PDF' : `${book.total_pages}ページ`}
+                      {book.book_type !== 'pdf' && book.current_page && (
                         <> • {Math.round((book.current_page / book.total_pages) * 100)}% 読了</>
                       )}
                     </div>

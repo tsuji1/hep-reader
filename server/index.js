@@ -41,35 +41,60 @@ const storage = multer.diskStorage({
 const upload = multer({
   storage,
   fileFilter: (req, file, cb) => {
-    if (path.extname(file.originalname).toLowerCase() === '.epub') {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (ext === '.epub' || ext === '.pdf') {
       cb(null, true);
     } else {
-      cb(new Error('Only EPUB files are allowed'));
+      cb(new Error('Only EPUB and PDF files are allowed'));
     }
   }
 });
 
-// Upload and convert EPUB to HTML
-app.post('/api/upload', upload.single('epub'), async (req, res) => {
+// Upload and convert EPUB to HTML, or store PDF
+app.post('/api/upload', upload.single('file'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const epubPath = req.file.path;
+    const filePath = req.file.path;
+    const ext = path.extname(req.file.originalname).toLowerCase();
     const bookId = uuidv4();
     const bookDir = path.join(convertedDir, bookId);
+
+    // Get title from filename
+    const bookTitle = path.basename(req.file.originalname, ext)
+      .replace(/[-_]/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2');
+
+    if (ext === '.pdf') {
+      // Handle PDF upload
+      fs.mkdirSync(bookDir, { recursive: true });
+      
+      // Move PDF to book directory
+      const pdfPath = path.join(bookDir, 'document.pdf');
+      fs.renameSync(filePath, pdfPath);
+      
+      // Save to database (PDF has 1 "page" in our system, actual pages handled by viewer)
+      db.addBook(bookId, bookTitle, req.file.originalname, 1, 'pdf');
+      
+      return res.json({
+        success: true,
+        bookId,
+        title: bookTitle,
+        bookType: 'pdf',
+        totalPages: 1
+      });
+    }
+
+    // Handle EPUB upload (existing logic)
+    const epubPath = filePath;
     const mediaDir = path.join(bookDir, 'media');
     const outputHtml = path.join(bookDir, 'index.html');
 
     // Create directories
     fs.mkdirSync(bookDir, { recursive: true });
     fs.mkdirSync(mediaDir, { recursive: true });
-
-    // Get book title from filename
-    const bookTitle = path.basename(req.file.originalname, '.epub')
-      .replace(/[-_]/g, ' ')
-      .replace(/([a-z])([A-Z])/g, '$1 $2');
 
     // Convert EPUB to HTML using pandoc
     const pandocCmd = `pandoc "${epubPath}" --standalone --extract-media="${mediaDir}" --toc --metadata title="${bookTitle}" -o "${outputHtml}"`;
@@ -88,7 +113,7 @@ app.post('/api/upload', upload.single('epub'), async (req, res) => {
     const pages = splitIntoPages(htmlContent, bookDir);
     
     // Save book info to database
-    db.addBook(bookId, bookTitle, req.file.originalname, pages.length);
+    db.addBook(bookId, bookTitle, req.file.originalname, pages.length, 'epub');
 
     // Clean up original epub
     fs.unlinkSync(epubPath);
@@ -97,12 +122,25 @@ app.post('/api/upload', upload.single('epub'), async (req, res) => {
       success: true,
       bookId,
       title: bookTitle,
+      bookType: 'epub',
       totalPages: pages.length
     });
   } catch (error) {
     console.error('Upload error:', error);
     res.status(500).json({ error: error.message });
   }
+});
+
+// Get PDF file
+app.get('/api/books/:bookId/pdf', (req, res) => {
+  const { bookId } = req.params;
+  const pdfPath = path.join(convertedDir, bookId, 'document.pdf');
+  
+  if (!fs.existsSync(pdfPath)) {
+    return res.status(404).json({ error: 'PDF not found' });
+  }
+  
+  res.sendFile(pdfPath);
 });
 
 // Split HTML content into pages
