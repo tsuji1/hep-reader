@@ -419,10 +419,95 @@ app.get('/api/books/:bookId/media/*', (req, res) => {
   }
 });
 
+// Upload custom cover image for a book
+const coverUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      const bookDir = path.join(convertedDir, req.params.bookId);
+      if (!fs.existsSync(bookDir)) {
+        return cb(new Error('Book not found'));
+      }
+      cb(null, bookDir);
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, `custom-cover${ext}`);
+    }
+  }),
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'));
+    }
+  },
+  limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
+});
+
+app.post('/api/books/:bookId/cover', coverUpload.single('cover'), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+    
+    const { bookId } = req.params;
+    const bookDir = path.join(convertedDir, bookId);
+    
+    // Remove old custom covers (different extensions)
+    const extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    for (const ext of extensions) {
+      const oldCover = path.join(bookDir, `custom-cover${ext}`);
+      if (oldCover !== req.file.path && fs.existsSync(oldCover)) {
+        fs.unlinkSync(oldCover);
+      }
+    }
+    
+    res.json({ success: true, message: 'Cover updated' });
+  } catch (error) {
+    console.error('Cover upload error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete custom cover (revert to original)
+app.delete('/api/books/:bookId/cover', (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const bookDir = path.join(convertedDir, bookId);
+    
+    // Remove custom covers
+    const extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    let deleted = false;
+    for (const ext of extensions) {
+      const coverPath = path.join(bookDir, `custom-cover${ext}`);
+      if (fs.existsSync(coverPath)) {
+        fs.unlinkSync(coverPath);
+        deleted = true;
+      }
+    }
+    
+    res.json({ success: true, deleted });
+  } catch (error) {
+    console.error('Cover delete error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Get cover image for a book
 app.get('/api/books/:bookId/cover', (req, res) => {
   const { bookId } = req.params;
-  const mediaDir = path.join(convertedDir, bookId, 'media');
+  const bookDir = path.join(convertedDir, bookId);
+  const mediaDir = path.join(bookDir, 'media');
+  
+  // First check for custom cover
+  const extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+  for (const ext of extensions) {
+    const customCover = path.join(bookDir, `custom-cover${ext}`);
+    if (fs.existsSync(customCover)) {
+      return res.sendFile(customCover);
+    }
+  }
   
   if (!fs.existsSync(mediaDir)) {
     return res.status(404).json({ error: 'No media found' });

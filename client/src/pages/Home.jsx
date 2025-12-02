@@ -1,5 +1,5 @@
 import axios from 'axios'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 
 function Home() {
@@ -12,6 +12,10 @@ function Home() {
   const [editingBook, setEditingBook] = useState(null)
   const [editTitle, setEditTitle] = useState('')
   const [editLanguage, setEditLanguage] = useState('en')
+  const [coverPreview, setCoverPreview] = useState(null)
+  const [coverFile, setCoverFile] = useState(null)
+  const [uploadingCover, setUploadingCover] = useState(false)
+  const coverInputRef = useRef(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -122,22 +126,70 @@ function Home() {
     setEditingBook(book)
     setEditTitle(book.title)
     setEditLanguage(book.language || 'en')
+    setCoverPreview(null)
+    setCoverFile(null)
+  }
+
+  // Handle cover image selection
+  const handleCoverSelect = (e) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        alert('画像ファイルを選択してください')
+        return
+      }
+      setCoverFile(file)
+      const reader = new FileReader()
+      reader.onload = (e) => setCoverPreview(e.target.result)
+      reader.readAsDataURL(file)
+    }
+  }
+
+  // Reset cover to original
+  const handleResetCover = async () => {
+    if (!editingBook) return
+    if (!confirm('カバー画像を元に戻しますか？')) return
+    
+    try {
+      await axios.delete(`/api/books/${editingBook.id}/cover`)
+      setCoverPreview(null)
+      setCoverFile(null)
+      fetchBooks()
+    } catch (error) {
+      console.error('Failed to reset cover:', error)
+      alert('カバーのリセットに失敗しました')
+    }
   }
 
   // Save book edits
   const saveBookEdit = async () => {
     if (!editingBook) return
     
+    setUploadingCover(true)
     try {
+      // Upload cover if changed
+      if (coverFile) {
+        const formData = new FormData()
+        formData.append('cover', coverFile)
+        await axios.post(`/api/books/${editingBook.id}/cover`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        })
+      }
+      
+      // Update book info
       await axios.patch(`/api/books/${editingBook.id}`, {
         title: editTitle,
         language: editLanguage
       })
       fetchBooks()
       setEditingBook(null)
+      setCoverPreview(null)
+      setCoverFile(null)
     } catch (error) {
       console.error('Failed to update book:', error)
       alert('更新に失敗しました')
+    } finally {
+      setUploadingCover(false)
     }
   }
 
@@ -273,6 +325,83 @@ function Home() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>📚 書籍情報を編集</h3>
             
+            {/* Cover Image Section */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                カバー画像
+              </label>
+              <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                <div 
+                  style={{
+                    width: '100px',
+                    height: '140px',
+                    borderRadius: '6px',
+                    overflow: 'hidden',
+                    background: '#f0f0f0',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}
+                >
+                  <img 
+                    src={coverPreview || `/api/books/${editingBook.id}/cover?t=${Date.now()}`}
+                    alt="カバー"
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={(e) => {
+                      e.target.style.display = 'none'
+                      e.target.parentElement.innerHTML = '<span style="font-size: 2rem">📖</span>'
+                    }}
+                  />
+                </div>
+                <div style={{ flex: 1 }}>
+                  <input
+                    ref={coverInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleCoverSelect}
+                    style={{ display: 'none' }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => coverInputRef.current?.click()}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#667eea',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      marginBottom: '8px',
+                      width: '100%'
+                    }}
+                  >
+                    📷 画像を選択
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleResetCover}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#f0f0f0',
+                      color: '#666',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      width: '100%'
+                    }}
+                  >
+                    🔄 元に戻す
+                  </button>
+                  <p style={{ fontSize: '0.75rem', color: '#888', marginTop: '8px' }}>
+                    PNG, JPG, GIF, WebP (最大10MB)
+                  </p>
+                </div>
+              </div>
+            </div>
+            
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '0.9rem' }}>
                 タイトル
@@ -323,8 +452,8 @@ function Home() {
               <button className="secondary" onClick={() => setEditingBook(null)}>
                 キャンセル
               </button>
-              <button className="primary" onClick={saveBookEdit}>
-                保存
+              <button className="primary" onClick={saveBookEdit} disabled={uploadingCover}>
+                {uploadingCover ? '保存中...' : '保存'}
               </button>
             </div>
           </div>
