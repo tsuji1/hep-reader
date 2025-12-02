@@ -35,6 +35,34 @@ npm run dev
 docker compose up -d
 ```
 
+## デプロイ
+
+コード変更後は必ずDockerを再ビルドしてデプロイする:
+
+```bash
+# 1. テスト実行（必須）
+npm test && cd client && npm test && cd ..
+
+# 2. コミット
+git add -A && git commit -m "feat: 変更内容"
+
+# 3. Dockerデプロイ（再ビルド）
+docker compose down && docker compose build --no-cache && docker compose up -d
+
+# 4. 動作確認
+open http://localhost:10300
+```
+
+**クイックデプロイ（キャッシュ使用）:**
+```bash
+docker compose up -d --build
+```
+
+**ログ確認:**
+```bash
+docker compose logs -f epub-viewer
+```
+
 ## コード規約
 
 ### バックエンド (server/)
