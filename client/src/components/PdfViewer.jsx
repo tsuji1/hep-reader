@@ -18,10 +18,14 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
   const renderTaskRef = useRef(null)
   const currentScaleRef = useRef(scale)
   
+  // 高解像度対応の倍率
+  const pixelRatio = window.devicePixelRatio || 1
+  
   // クリップ選択状態
   const [isSelecting, setIsSelecting] = useState(false)
   const [selectionStart, setSelectionStart] = useState(null)
   const [selectionEnd, setSelectionEnd] = useState(null)
+  const [lastSelection, setLastSelection] = useState(null) // 最後の選択範囲を保持
   
   // クリップ選択ハンドラー
   const handleMouseDown = (e) => {
@@ -33,6 +37,7 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
     setIsSelecting(true)
     setSelectionStart({ x, y })
     setSelectionEnd({ x, y })
+    setLastSelection(null) // 新しい選択を開始したらリセット
   }
   
   const handleMouseMove = (e) => {
@@ -57,14 +62,22 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
     
     // 最小サイズチェック
     if (width > 10 && height > 10 && canvasRef.current) {
+      // 選択範囲を保持（枠を表示し続ける）
+      setLastSelection({ x, y, width, height })
+      
       try {
-        // キャンバスから選択範囲を切り出し
+        // キャンバスから選択範囲を切り出し（高解像度対応）
         const canvas = canvasRef.current
         const tempCanvas = document.createElement('canvas')
-        tempCanvas.width = width
-        tempCanvas.height = height
+        // 高解像度でキャプチャ
+        tempCanvas.width = width * pixelRatio
+        tempCanvas.height = height * pixelRatio
         const ctx = tempCanvas.getContext('2d')
-        ctx.drawImage(canvas, x, y, width, height, 0, 0, width, height)
+        ctx.drawImage(
+          canvas, 
+          x * pixelRatio, y * pixelRatio, width * pixelRatio, height * pixelRatio, 
+          0, 0, width * pixelRatio, height * pixelRatio
+        )
         const imageData = tempCanvas.toDataURL('image/png')
         
         if (onClipCapture) {
@@ -80,15 +93,32 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
     setSelectionEnd(null)
   }
   
+  // クリップモードを解除したら選択枠もクリア
+  useEffect(() => {
+    if (!clipMode) {
+      setLastSelection(null)
+    }
+  }, [clipMode])
+  
   // 選択範囲の矩形を計算
   const getSelectionRect = () => {
-    if (!selectionStart || !selectionEnd) return null
-    return {
-      left: Math.min(selectionStart.x, selectionEnd.x),
-      top: Math.min(selectionStart.y, selectionEnd.y),
-      width: Math.abs(selectionEnd.x - selectionStart.x),
-      height: Math.abs(selectionEnd.y - selectionStart.y)
+    if (isSelecting && selectionStart && selectionEnd) {
+      return {
+        left: Math.min(selectionStart.x, selectionEnd.x),
+        top: Math.min(selectionStart.y, selectionEnd.y),
+        width: Math.abs(selectionEnd.x - selectionStart.x),
+        height: Math.abs(selectionEnd.y - selectionStart.y)
+      }
     }
+    if (lastSelection) {
+      return {
+        left: lastSelection.x,
+        top: lastSelection.y,
+        width: lastSelection.width,
+        height: lastSelection.height
+      }
+    }
+    return null
   }
 
   useEffect(() => {
@@ -113,8 +143,15 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
         if (!canvas) return
 
         const context = canvas.getContext('2d')
-        canvas.height = viewport.height
-        canvas.width = viewport.width
+        
+        // 高解像度対応：canvasの実際のサイズを大きくし、CSSで表示サイズを設定
+        canvas.width = viewport.width * pixelRatio
+        canvas.height = viewport.height * pixelRatio
+        canvas.style.width = `${viewport.width}px`
+        canvas.style.height = `${viewport.height}px`
+        
+        // コンテキストをスケール
+        context.scale(pixelRatio, pixelRatio)
 
         // 前のレンダリングタスクをキャンセル
         if (renderTaskRef.current) {
@@ -204,7 +241,7 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
         </div>
       )}
       {/* クリップ選択オーバーレイ */}
-      {isSelecting && selectionRect && (
+      {clipMode && selectionRect && (
         <div 
           className="clip-selection-overlay"
           style={{
@@ -213,11 +250,28 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
             top: selectionRect.top,
             width: selectionRect.width,
             height: selectionRect.height,
-            border: '2px dashed #007bff',
-            backgroundColor: 'rgba(0, 123, 255, 0.2)',
-            pointerEvents: 'none'
+            border: lastSelection ? '3px solid #28a745' : '2px dashed #007bff',
+            backgroundColor: lastSelection ? 'rgba(40, 167, 69, 0.15)' : 'rgba(0, 123, 255, 0.2)',
+            pointerEvents: 'none',
+            boxSizing: 'border-box'
           }}
-        />
+        >
+          {lastSelection && (
+            <div style={{
+              position: 'absolute',
+              top: '-24px',
+              left: '0',
+              background: '#28a745',
+              color: 'white',
+              padding: '2px 8px',
+              borderRadius: '4px',
+              fontSize: '12px',
+              whiteSpace: 'nowrap'
+            }}>
+              ✓ 保存済み
+            </div>
+          )}
+        </div>
       )}
     </div>
   )
