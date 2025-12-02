@@ -67,11 +67,25 @@ db.exec(`
     page_num INTEGER NOT NULL,
     image_data TEXT NOT NULL,
     note TEXT,
+    x_ratio REAL,
+    y_ratio REAL,
+    width_ratio REAL,
+    height_ratio REAL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
   );
   CREATE INDEX IF NOT EXISTS idx_clips_book_id ON clips(book_id);
 `);
+
+// Migration: Add position columns to clips table
+try {
+  db.exec(`ALTER TABLE clips ADD COLUMN x_ratio REAL`);
+  db.exec(`ALTER TABLE clips ADD COLUMN y_ratio REAL`);
+  db.exec(`ALTER TABLE clips ADD COLUMN width_ratio REAL`);
+  db.exec(`ALTER TABLE clips ADD COLUMN height_ratio REAL`);
+} catch (e) {
+  // Columns already exist
+}
 
 module.exports = {
   // Books
@@ -179,19 +193,23 @@ module.exports = {
   },
 
   // Clips (screenshot captures)
-  addClip(bookId, pageNum, imageData, note = '') {
+  addClip(bookId, pageNum, imageData, note = '', position = null) {
     const id = uuidv4();
     const stmt = db.prepare(`
-      INSERT INTO clips (id, book_id, page_num, image_data, note)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO clips (id, book_id, page_num, image_data, note, x_ratio, y_ratio, width_ratio, height_ratio)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
-    stmt.run(id, bookId, pageNum, imageData, note);
-    return { id, book_id: bookId, page_num: pageNum, note, created_at: new Date().toISOString() };
+    const xRatio = position?.xRatio ?? null;
+    const yRatio = position?.yRatio ?? null;
+    const widthRatio = position?.widthRatio ?? null;
+    const heightRatio = position?.heightRatio ?? null;
+    stmt.run(id, bookId, pageNum, imageData, note, xRatio, yRatio, widthRatio, heightRatio);
+    return { id, book_id: bookId, page_num: pageNum, note, x_ratio: xRatio, y_ratio: yRatio, created_at: new Date().toISOString() };
   },
 
   getClips(bookId) {
     const stmt = db.prepare(`
-      SELECT id, book_id, page_num, image_data, note, created_at FROM clips 
+      SELECT id, book_id, page_num, image_data, note, x_ratio, y_ratio, width_ratio, height_ratio, created_at FROM clips 
       WHERE book_id = ? ORDER BY created_at DESC
     `);
     return stmt.all(bookId);

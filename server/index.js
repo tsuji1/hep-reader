@@ -442,11 +442,11 @@ app.get('/api/clips/:clipId', (req, res) => {
 
 app.post('/api/books/:bookId/clips', (req, res) => {
   try {
-    const { pageNum, imageData, note } = req.body;
+    const { pageNum, imageData, note, position } = req.body;
     if (!imageData) {
       return res.status(400).json({ error: 'imageData is required' });
     }
-    const clip = db.addClip(req.params.bookId, pageNum, imageData, note);
+    const clip = db.addClip(req.params.bookId, pageNum, imageData, note, position);
     res.json(clip);
   } catch (error) {
     res.status(500).json({ error: error.message });

@@ -234,18 +234,23 @@ function Reader() {
     }
   }
 
+  // クリップの位置情報を保持
+  const [clipPosition, setClipPosition] = useState(null)
+
   // クリップ保存
   const saveClip = async () => {
     try {
       await axios.post(`/api/books/${bookId}/clips`, {
         pageNum: clipPageNum,
         imageData: clipImageData,
-        note: clipNote
+        note: clipNote,
+        position: clipPosition
       })
       fetchClips()
       setShowClipModal(false)
       setClipImageData(null)
       setClipNote('')
+      setClipPosition(null)
       setClipMode(false)
     } catch (error) {
       console.error('Failed to save clip:', error)
@@ -263,18 +268,64 @@ function Reader() {
     }
   }
 
-  // クリップ画像を表示（一覧から直接）
-  const showClipImage = (clip) => {
-    setPopupImage({
-      src: clip.image_data,
-      alt: clip.note || 'クリップ画像'
-    })
+  // クリップ画像を別ウィンドウで表示
+  const openClipInNewWindow = (clip) => {
+    // 新しいウィンドウで画像を開く
+    const newWindow = window.open('', '_blank', 'width=600,height=500,resizable=yes,scrollbars=yes')
+    if (newWindow) {
+      newWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>${clip.note || 'クリップ画像'} - p.${clip.page_num}</title>
+          <style>
+            body {
+              margin: 0;
+              padding: 20px;
+              background: #1a1a2e;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              min-height: 100vh;
+              box-sizing: border-box;
+            }
+            img {
+              max-width: 100%;
+              height: auto;
+              border-radius: 8px;
+              box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            }
+            .info {
+              color: #fff;
+              margin-top: 15px;
+              font-family: sans-serif;
+              text-align: center;
+            }
+            .note {
+              color: #aaa;
+              font-size: 14px;
+              margin-top: 8px;
+            }
+          </style>
+        </head>
+        <body>
+          <img src="${clip.image_data}" alt="クリップ画像" />
+          <div class="info">
+            <strong>ページ ${clip.page_num}</strong>
+            ${clip.note ? `<div class="note">${clip.note}</div>` : ''}
+          </div>
+        </body>
+        </html>
+      `)
+      newWindow.document.close()
+    }
   }
 
   // PDFからクリップを受け取るコールバック
-  const handleClipCapture = useCallback((pageNum, imageData) => {
+  const handleClipCapture = useCallback((pageNum, imageData, position) => {
     setClipPageNum(pageNum)
     setClipImageData(imageData)
+    setClipPosition(position)
     setShowClipModal(true)
   }, [])
 
@@ -425,7 +476,7 @@ function Reader() {
                 <div
                   key={clip.id}
                   className="clip-item"
-                  onClick={() => showClipImage(clip)}
+                  onClick={() => openClipInNewWindow(clip)}
                 >
                   <div className="clip-thumb">
                     <img src={clip.image_data} alt="" />
@@ -537,6 +588,8 @@ function Reader() {
               viewMode={viewMode}
               clipMode={clipMode}
               onClipCapture={handleClipCapture}
+              clips={clips}
+              onClipClick={openClipInNewWindow}
             />
           ) : viewMode === 'scroll' ? (
             <div className="content-continuous">

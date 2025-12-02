@@ -10,7 +10,7 @@ const CMAP_URL = 'https://unpkg.com/pdfjs-dist@4.4.168/cmaps/'
 const CMAP_PACKED = true
 
 // 個別ページコンポーネント
-function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
+function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clips, onClipClick }) {
   const canvasRef = useRef(null)
   const textLayerRef = useRef(null)
   const [rendered, setRendered] = useState(false)
@@ -26,6 +26,9 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
   const [selectionStart, setSelectionStart] = useState(null)
   const [selectionEnd, setSelectionEnd] = useState(null)
   const [lastSelection, setLastSelection] = useState(null) // 最後の選択範囲を保持
+  
+  // このページのクリップをフィルタ
+  const pageClips = clips?.filter(c => c.page_num === pageNum) || []
   
   // クリップ選択ハンドラー
   const handleMouseDown = (e) => {
@@ -81,7 +84,14 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
         const imageData = tempCanvas.toDataURL('image/png')
         
         if (onClipCapture) {
-          onClipCapture(pageNum, imageData)
+          // 選択位置情報も一緒に渡す（ページサイズに対する比率で保存）
+          const positionInfo = {
+            xRatio: x / pageSize.width,
+            yRatio: y / pageSize.height,
+            widthRatio: width / pageSize.width,
+            heightRatio: height / pageSize.height
+          }
+          onClipCapture(pageNum, imageData, positionInfo)
         }
       } catch (err) {
         console.error('クリップキャプチャエラー:', err)
@@ -273,11 +283,42 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture }) {
           )}
         </div>
       )}
+      {/* 保存済みクリップのマーカー */}
+      {pageClips.map((clip) => {
+        // 位置情報がある場合はその位置に、なければ左上に表示
+        const hasPosition = clip.x_ratio != null && clip.y_ratio != null
+        const markerStyle = hasPosition ? {
+          position: 'absolute',
+          left: `${clip.x_ratio * 100}%`,
+          top: `${clip.y_ratio * 100}%`,
+          zIndex: 10
+        } : {
+          position: 'absolute',
+          left: '10px',
+          top: `${10 + pageClips.indexOf(clip) * 35}px`,
+          zIndex: 10
+        }
+        
+        return (
+          <button
+            key={clip.id}
+            className="clip-marker-btn"
+            style={markerStyle}
+            onClick={(e) => {
+              e.stopPropagation()
+              if (onClipClick) onClipClick(clip)
+            }}
+            title={clip.note || 'クリップを開く'}
+          >
+            📷
+          </button>
+        )
+      })}
     </div>
   )
 }
 
-function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, viewMode, clipMode, onClipCapture }) {
+function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, viewMode, clipMode, onClipCapture, clips, onClipClick }) {
   const [pdf, setPdf] = useState(null)
   const [totalPages, setTotalPages] = useState(0)
   const [loading, setLoading] = useState(true)
@@ -465,6 +506,8 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, view
                   isVisible={!!visiblePages[pageNum]}
                   clipMode={clipMode}
                   onClipCapture={onClipCapture}
+                  clips={clips}
+                  onClipClick={onClipClick}
                 />
               </div>
             </div>
@@ -480,6 +523,8 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, view
               isVisible={true}
               clipMode={clipMode}
               onClipCapture={onClipCapture}
+              clips={clips}
+              onClipClick={onClipClick}
             />
           </div>
         </div>
