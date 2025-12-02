@@ -78,12 +78,59 @@ try { db.exec(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'en'`); } catc
 2. **Green**: テストを通す最小限のコードを書く
 3. **Refactor**: 重複除去・設計改善 (テストは緑のまま)
 
+### テスト実行コマンド
+
 ```bash
-# テスト実行 (要: package.jsonにtest script追加)
+# バックエンドテスト
 npm test
+
+# フロントエンドテスト
+cd client && npm test
+
+# 全テスト実行
+npm run test:all
+
+# ウォッチモード (開発中)
+npm run test:watch
 ```
 
-**テストファイル命名**: `*.test.js` または `__tests__/*.js`
+### テストファイル構成
+
+| ファイル | 内容 |
+|---------|------|
+| `server/database.test.js` | DB操作 (books, bookmarks, progress) |
+| `client/src/utils/reader.test.js` | ユーティリティ関数 |
+| `client/src/utils/reader.js` | テスト可能な純粋関数を抽出 |
+
+### テストツールスタック
+
+- **Vitest**: テストランナー (Jest互換、Vite統合)
+- **supertest**: API統合テスト用
+- **@testing-library/react**: Reactコンポーネントテスト
+
+### 新機能追加時のTDDフロー
+
+```bash
+# 1. Red: 失敗するテストを書く
+# server/database.test.js に追加
+it('should do something new', () => {
+  expect(testDB.newFunction()).toBe(expected)
+})
+
+# 2. テスト実行 → 失敗確認
+npm test
+
+# 3. Green: 最小限の実装
+# server/database.js に関数追加
+
+# 4. テスト実行 → 成功確認
+npm test
+
+# 5. Refactor: コード改善
+
+# 6. コミット
+git add -A && git commit -m "feat: add new function"
+```
 
 ## Git運用
 

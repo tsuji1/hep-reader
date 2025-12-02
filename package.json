@@ -1,0 +1,28 @@
+{
+  "name": "epub-html-viewer",
+  "version": "1.0.0",
+  "description": "EPUB to HTML viewer with bookmark functionality",
+  "main": "server/index.js",
+  "scripts": {
+    "server": "node server/index.js",
+    "client": "cd client && npm run dev",
+    "dev": "concurrently \"npm run server\" \"npm run client\"",
+    "install:all": "npm install && cd client && npm install",
+    "build": "cd client && npm run build",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:all": "npm test && cd client && npm test"
+  },
+  "dependencies": {
+    "better-sqlite3": "^11.5.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^10.0.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "supertest": "^7.1.4",
+    "vitest": "^4.0.14"
+  }
+}
