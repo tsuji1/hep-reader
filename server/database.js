@@ -191,7 +191,7 @@ module.exports = {
 
   getClips(bookId) {
     const stmt = db.prepare(`
-      SELECT id, book_id, page_num, note, created_at FROM clips 
+      SELECT id, book_id, page_num, image_data, note, created_at FROM clips 
       WHERE book_id = ? ORDER BY created_at DESC
     `);
     return stmt.all(bookId);

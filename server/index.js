@@ -605,10 +605,46 @@ app.delete('/api/books/:bookId/cover', (req, res) => {
 });
 
 // Get cover image for a book
-app.get('/api/books/:bookId/cover', (req, res) => {
+app.get('/api/books/:bookId/cover', async (req, res) => {
   const { bookId } = req.params;
   const bookDir = path.join(convertedDir, bookId);
   const mediaDir = path.join(bookDir, 'media');
+  
+  // PDFの場合、pages.jsonがないことで判定
+  const pagesJsonPath = path.join(bookDir, 'pages.json');
+  const pdfPath = path.join(bookDir, 'original.pdf');
+  
+  // PDFの場合は1ページ目のサムネイルを生成
+  if (!fs.existsSync(pagesJsonPath) && fs.existsSync(pdfPath)) {
+    // カスタムカバーがあればそちらを優先
+    const extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
+    for (const ext of extensions) {
+      const customCover = path.join(bookDir, `custom-cover${ext}`);
+      if (fs.existsSync(customCover)) {
+        return res.sendFile(customCover);
+      }
+    }
+    
+    // PDFサムネイルがキャッシュされていればそれを返す
+    const thumbnailPath = path.join(bookDir, 'pdf-thumbnail.png');
+    if (fs.existsSync(thumbnailPath)) {
+      return res.sendFile(thumbnailPath);
+    }
+    
+    // pdftoppmでサムネイル生成を試みる
+    try {
+      execSync(`pdftoppm -png -f 1 -l 1 -scale-to 400 "${pdfPath}" "${path.join(bookDir, 'pdf-thumb')}"`, { timeout: 10000 });
+      const thumbFile = path.join(bookDir, 'pdf-thumb-1.png');
+      if (fs.existsSync(thumbFile)) {
+        fs.renameSync(thumbFile, thumbnailPath);
+        return res.sendFile(thumbnailPath);
+      }
+    } catch (e) {
+      console.log('pdftoppm not available, returning 404 for PDF cover');
+    }
+    
+    return res.status(404).json({ error: 'No cover found for PDF' });
+  }
   
   // First check for custom cover
   const extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];

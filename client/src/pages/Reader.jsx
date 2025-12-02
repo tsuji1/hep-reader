@@ -263,17 +263,12 @@ function Reader() {
     }
   }
 
-  // クリップ画像を表示
-  const showClipImage = async (clipId) => {
-    try {
-      const res = await axios.get(`/api/clips/${clipId}`)
-      setPopupImage({
-        src: res.data.image_data,
-        alt: res.data.note || 'クリップ画像'
-      })
-    } catch (error) {
-      console.error('Failed to load clip:', error)
-    }
+  // クリップ画像を表示（一覧から直接）
+  const showClipImage = (clip) => {
+    setPopupImage({
+      src: clip.image_data,
+      alt: clip.note || 'クリップ画像'
+    })
   }
 
   // PDFからクリップを受け取るコールバック
@@ -430,10 +425,15 @@ function Reader() {
                 <div
                   key={clip.id}
                   className="clip-item"
-                  onClick={() => showClipImage(clip.id)}
+                  onClick={() => showClipImage(clip)}
                 >
-                  <span className="page">p.{clip.page_num}</span>
-                  <span className="note">{clip.note || '(メモなし)'}</span>
+                  <div className="clip-thumb">
+                    <img src={clip.image_data} alt="" />
+                  </div>
+                  <div className="clip-info">
+                    <span className="page">p.{clip.page_num}</span>
+                    <span className="note">{clip.note || '(メモなし)'}</span>
+                  </div>
                   <button
                     className="delete"
                     onClick={(e) => deleteClip(e, clip.id)}

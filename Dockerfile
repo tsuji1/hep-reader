@@ -11,8 +11,8 @@ RUN npm run build
 
 FROM node:20.19.6
 
-# Install pandoc
-RUN apt-get update && apt-get install -y pandoc && rm -rf /var/lib/apt/lists/*
+# Install pandoc and poppler-utils (for pdftoppm)
+RUN apt-get update && apt-get install -y pandoc poppler-utils && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
