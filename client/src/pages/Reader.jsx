@@ -1,11 +1,13 @@
 import axios from 'axios'
 import { useEffect, useRef, useState } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import PdfViewer from '../components/PdfViewer'
 
 function Reader() {
   const { bookId } = useParams()
   const [book, setBook] = useState(null)
   const [currentPage, setCurrentPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
   const [pages, setPages] = useState([])
   const [loading, setLoading] = useState(true)
   const [bookmarks, setBookmarks] = useState([])
@@ -18,6 +20,7 @@ function Reader() {
   const [jumpPageInput, setJumpPageInput] = useState('')
   const [viewMode, setViewMode] = useState('scroll') // 'scroll' or 'page'
   const [isPdf, setIsPdf] = useState(false)
+  const [pdfTotalPages, setPdfTotalPages] = useState(0)
   
   const contentRef = useRef(null)
   const pageRefs = useRef({})
@@ -31,10 +34,16 @@ function Reader() {
         setBook(res.data)
         
         // PDFの場合は別処理 (category または original_filename で判定)
-        const isPdf = res.data.category === 'pdf' || 
+        const isPdfBook = res.data.category === 'pdf' || 
                       (res.data.original_filename && res.data.original_filename.toLowerCase().endsWith('.pdf'))
-        if (isPdf) {
+        
+        if (isPdfBook) {
           setIsPdf(true)
+          // PDFの読み込み進捗を取得
+          const progressRes = await axios.get(`/api/books/${bookId}/progress`)
+          const initialPage = progressRes.data.currentPage || 1
+          setCurrentPage(initialPage)
+          fetchBookmarks()
           setLoading(false)
           return
         }
@@ -42,6 +51,7 @@ function Reader() {
         // Fetch all pages (EPUB)
         const pagesRes = await axios.get(`/api/books/${bookId}/all-pages`)
         setPages(pagesRes.data.pages)
+        setTotalPages(pagesRes.data.total)
         
         // Determine initial page from saved progress
         const progressRes = await axios.get(`/api/books/${bookId}/progress`)
@@ -67,16 +77,16 @@ function Reader() {
 
   // Scroll to initial page after pages are loaded
   useEffect(() => {
-    if (!loading && pages.length > 0 && currentPage > 1) {
+    if (!loading && pages.length > 0 && currentPage > 1 && !isPdf) {
       setTimeout(() => {
         scrollToPage(currentPage, false)
       }, 100)
     }
-  }, [loading, pages.length])
+  }, [loading, pages.length, isPdf])
 
-  // Handle scroll to detect current page (only in scroll mode)
+  // Handle scroll to detect current page (only in scroll mode for EPUB)
   useEffect(() => {
-    if (viewMode !== 'scroll') return
+    if (viewMode !== 'scroll' || isPdf) return
     
     const handleScroll = () => {
       if (isScrollingToPage.current || !contentRef.current) return
@@ -112,7 +122,7 @@ function Reader() {
       container.addEventListener('scroll', handleScroll, { passive: true })
       return () => container.removeEventListener('scroll', handleScroll)
     }
-  }, [bookId, currentPage, pages.length, viewMode])
+  }, [bookId, currentPage, pages.length, viewMode, isPdf])
 
   const fetchBookmarks = async () => {
     try {
@@ -136,13 +146,26 @@ function Reader() {
   }
 
   const goToPage = (page) => {
-    if (page >= 1 && page <= (book?.total || 1)) {
+    const maxPages = isPdf ? pdfTotalPages : totalPages
+    if (page >= 1 && page <= maxPages) {
       setCurrentPage(page)
-      if (viewMode === 'scroll') {
+      if (!isPdf && viewMode === 'scroll') {
         scrollToPage(page)
       }
       axios.post(`/api/books/${bookId}/progress`, { currentPage: page })
     }
+  }
+
+  // PDFのページ変更ハンドラ
+  const handlePdfPageChange = (page) => {
+    setCurrentPage(page)
+    axios.post(`/api/books/${bookId}/progress`, { currentPage: page })
+  }
+
+  // PDFの総ページ数を受け取る
+  const handlePdfTotalPages = (total) => {
+    setPdfTotalPages(total)
+    setTotalPages(total)
   }
 
   const addBookmark = async () => {
@@ -173,12 +196,13 @@ function Reader() {
 
   const handlePageJump = () => {
     const pageNum = parseInt(jumpPageInput)
-    if (pageNum >= 1 && pageNum <= (book?.total || 1)) {
+    const maxPages = isPdf ? pdfTotalPages : totalPages
+    if (pageNum >= 1 && pageNum <= maxPages) {
       goToPage(pageNum)
       setShowPageJumpModal(false)
       setJumpPageInput('')
     } else {
-      alert(`1から${book?.total || 1}の間で入力してください`)
+      alert(`1から${maxPages}の間で入力してください`)
     }
   }
 
@@ -195,45 +219,7 @@ function Reader() {
     return <div className="loading">読み込み中</div>
   }
 
-  // PDFビューア
-  if (isPdf) {
-    return (
-      <div className="reader pdf-reader">
-        <div className="pdf-toolbar">
-          <Link to="/" style={{ color: '#667eea', textDecoration: 'none', fontSize: '0.9rem' }}>
-            ← ライブラリ
-          </Link>
-          <h2 style={{ margin: '0 20px', fontSize: '1rem', flex: 1 }}>{book.title}</h2>
-          <a 
-            href={`/api/books/${bookId}/pdf`} 
-            download={`${book.title}.pdf`}
-            className="download-btn"
-            style={{
-              padding: '8px 16px',
-              background: '#667eea',
-              color: 'white',
-              borderRadius: '6px',
-              textDecoration: 'none',
-              fontSize: '0.9rem'
-            }}
-          >
-            ⬇ ダウンロード
-          </a>
-        </div>
-        <div className="pdf-container">
-          <iframe
-            src={`/api/books/${bookId}/pdf`}
-            title={book.title}
-            style={{
-              width: '100%',
-              height: 'calc(100vh - 60px)',
-              border: 'none'
-            }}
-          />
-        </div>
-      </div>
-    )
-  }
+  const displayTotalPages = isPdf ? pdfTotalPages : totalPages
 
   return (
     <div className="reader">
@@ -253,17 +239,37 @@ function Reader() {
             </button>
           </div>
           <h2 style={{ marginTop: '10px', fontSize: '1rem', lineHeight: '1.4' }}>{book.title}</h2>
+          {isPdf && (
+            <a 
+              href={`/api/books/${bookId}/pdf`} 
+              download={`${book.title}.pdf`}
+              style={{
+                display: 'inline-block',
+                marginTop: '10px',
+                padding: '6px 12px',
+                background: '#667eea',
+                color: 'white',
+                borderRadius: '4px',
+                textDecoration: 'none',
+                fontSize: '0.8rem'
+              }}
+            >
+              ⬇ ダウンロード
+            </a>
+          )}
         </div>
         
         <div className="sidebar-tabs">
+          {!isPdf && (
+            <button
+              className={sidebarTab === 'toc' ? 'active' : ''}
+              onClick={() => setSidebarTab('toc')}
+            >
+              目次 ({toc.length})
+            </button>
+          )}
           <button
-            className={sidebarTab === 'toc' ? 'active' : ''}
-            onClick={() => setSidebarTab('toc')}
-          >
-            目次 ({toc.length})
-          </button>
-          <button
-            className={sidebarTab === 'bookmarks' ? 'active' : ''}
+            className={sidebarTab === 'bookmarks' || isPdf ? 'active' : ''}
             onClick={() => setSidebarTab('bookmarks')}
           >
             しおり ({bookmarks.length})
@@ -271,7 +277,7 @@ function Reader() {
         </div>
         
         <div className="sidebar-content">
-          {sidebarTab === 'toc' ? (
+          {sidebarTab === 'toc' && !isPdf ? (
             toc.length === 0 ? (
               <p style={{ color: '#888', textAlign: 'center', padding: '20px' }}>
                 目次がありません
@@ -367,7 +373,7 @@ function Reader() {
             }}
             title="クリックしてページを指定"
           >
-            {currentPage} / {book.total} ページ
+            {currentPage} / {displayTotalPages || '?'} ページ
           </span>
           
           <div className="nav-buttons">
@@ -379,7 +385,7 @@ function Reader() {
             </button>
             <button
               onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage >= book.total}
+              disabled={currentPage >= displayTotalPages}
             >
               次へ →
             </button>
@@ -389,6 +395,14 @@ function Reader() {
         <div className="reader-content" ref={contentRef}>
           {loading ? (
             <div className="loading">読み込み中</div>
+          ) : isPdf ? (
+            <PdfViewer
+              pdfUrl={`/api/books/${bookId}/pdf`}
+              currentPage={currentPage}
+              onPageChange={handlePdfPageChange}
+              onTotalPagesChange={handlePdfTotalPages}
+              viewMode={viewMode}
+            />
           ) : viewMode === 'scroll' ? (
             <div className="content-continuous">
               {pages.map((page) => (
@@ -455,12 +469,12 @@ function Reader() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>📄 ページを指定して移動</h3>
             <p style={{ marginBottom: '15px', color: '#666' }}>
-              1 〜 {book.total} の間でページ番号を入力
+              1 〜 {displayTotalPages} の間でページ番号を入力
             </p>
             <input
               type="number"
               min="1"
-              max={book.total}
+              max={displayTotalPages}
               value={jumpPageInput}
               onChange={(e) => setJumpPageInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handlePageJump()}
