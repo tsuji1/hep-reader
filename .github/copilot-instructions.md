@@ -37,11 +37,13 @@ docker compose up -d
 
 ## デプロイ
 
-コード変更後は必ずDockerを再ビルドしてデプロイする:
+**重要: デプロイ前に必ずテストを実行すること！**
+
+コード変更後は必ずテスト → Dockerを再ビルドしてデプロイする:
 
 ```bash
-# 1. テスト実行（必須）
-npm test && cd client && npm test && cd ..
+# 1. テスト実行（必須 - これが通らないとデプロイしない）
+npm test
 
 # 2. コミット
 git add -A && git commit -m "feat: 変更内容"
@@ -55,7 +57,7 @@ open http://localhost:10300
 
 **クイックデプロイ（キャッシュ使用）:**
 ```bash
-docker compose up -d --build
+npm test && docker compose up -d --build
 ```
 
 **ログ確認:**
@@ -100,7 +102,15 @@ try { db.exec(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'en'`); } catc
 
 ## TDD開発ガイドライン (t-wada style)
 
-テスト追加時は以下のサイクルを遵守:
+**重要: 機能追加・バグ修正は必ずテストファーストで行うこと！**
+
+### 開発の鉄則
+
+1. **テストを書いてから実装する** - 実装前に必ずテストを書く
+2. **テストが通ってからデプロイする** - `npm test` が全てパスしてからDockerデプロイ
+3. **APIの変更は `server/api.test.js` でテストする** - supertestを使った統合テスト
+
+### TDDサイクル (Red → Green → Refactor)
 
 1. **Red**: 失敗するテストを最小限で書く
 2. **Green**: テストを通す最小限のコードを書く
@@ -109,7 +119,7 @@ try { db.exec(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'en'`); } catc
 ### テスト実行コマンド
 
 ```bash
-# バックエンドテスト
+# バックエンドテスト（必須）
 npm test
 
 # フロントエンドテスト
@@ -126,6 +136,7 @@ npm run test:watch
 
 | ファイル | 内容 |
 |---------|------|
+| `server/api.test.js` | API統合テスト (supertest) |
 | `server/database.test.js` | DB操作 (books, bookmarks, progress) |
 | `client/src/utils/reader.test.js` | ユーティリティ関数 |
 | `client/src/utils/reader.js` | テスト可能な純粋関数を抽出 |
@@ -136,28 +147,51 @@ npm run test:watch
 - **supertest**: API統合テスト用
 - **@testing-library/react**: Reactコンポーネントテスト
 
-### 新機能追加時のTDDフロー
+### 新機能追加時のTDDフロー（必須）
 
 ```bash
 # 1. Red: 失敗するテストを書く
-# server/database.test.js に追加
+# server/api.test.js または server/database.test.js に追加
 it('should do something new', () => {
-  expect(testDB.newFunction()).toBe(expected)
+  expect(result).toBe(expected)
 })
 
 # 2. テスト実行 → 失敗確認
 npm test
 
 # 3. Green: 最小限の実装
-# server/database.js に関数追加
+# server/index.js または server/database.js に実装
 
-# 4. テスト実行 → 成功確認
+# 4. テスト実行 → 成功確認（必須！）
 npm test
 
 # 5. Refactor: コード改善
 
-# 6. コミット
+# 6. 全テスト通過を確認してからデプロイ
+npm test && docker compose up -d --build
+
+# 7. コミット
 git add -A && git commit -m "feat: add new function"
+```
+
+### バグ修正時のTDDフロー（必須）
+
+```bash
+# 1. バグを再現するテストを書く
+it('should handle edge case X', () => {
+  // バグが発生する条件を再現
+})
+
+# 2. テスト実行 → 失敗確認（バグの存在を証明）
+npm test
+
+# 3. バグを修正
+
+# 4. テスト実行 → 成功確認（修正の証明）
+npm test
+
+# 5. デプロイ
+docker compose up -d --build
 ```
 
 ## Git運用

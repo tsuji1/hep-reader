@@ -17,6 +17,7 @@ function Reader() {
   const [showPageJumpModal, setShowPageJumpModal] = useState(false)
   const [jumpPageInput, setJumpPageInput] = useState('')
   const [viewMode, setViewMode] = useState('scroll') // 'scroll' or 'page'
+  const [isPdf, setIsPdf] = useState(false)
   
   const contentRef = useRef(null)
   const pageRefs = useRef({})
@@ -29,7 +30,16 @@ function Reader() {
         const res = await axios.get(`/api/books/${bookId}`)
         setBook(res.data)
         
-        // Fetch all pages
+        // PDFの場合は別処理 (category または original_filename で判定)
+        const isPdf = res.data.category === 'pdf' || 
+                      (res.data.original_filename && res.data.original_filename.toLowerCase().endsWith('.pdf'))
+        if (isPdf) {
+          setIsPdf(true)
+          setLoading(false)
+          return
+        }
+        
+        // Fetch all pages (EPUB)
         const pagesRes = await axios.get(`/api/books/${bookId}/all-pages`)
         setPages(pagesRes.data.pages)
         
@@ -183,6 +193,46 @@ function Reader() {
 
   if (!book) {
     return <div className="loading">読み込み中</div>
+  }
+
+  // PDFビューア
+  if (isPdf) {
+    return (
+      <div className="reader pdf-reader">
+        <div className="pdf-toolbar">
+          <Link to="/" style={{ color: '#667eea', textDecoration: 'none', fontSize: '0.9rem' }}>
+            ← ライブラリ
+          </Link>
+          <h2 style={{ margin: '0 20px', fontSize: '1rem', flex: 1 }}>{book.title}</h2>
+          <a 
+            href={`/api/books/${bookId}/pdf`} 
+            download={`${book.title}.pdf`}
+            className="download-btn"
+            style={{
+              padding: '8px 16px',
+              background: '#667eea',
+              color: 'white',
+              borderRadius: '6px',
+              textDecoration: 'none',
+              fontSize: '0.9rem'
+            }}
+          >
+            ⬇ ダウンロード
+          </a>
+        </div>
+        <div className="pdf-container">
+          <iframe
+            src={`/api/books/${bookId}/pdf`}
+            title={book.title}
+            style={{
+              width: '100%',
+              height: 'calc(100vh - 60px)',
+              border: 'none'
+            }}
+          />
+        </div>
+      </div>
+    )
   }
 
   return (

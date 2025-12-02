@@ -259,7 +259,22 @@ app.get('/api/books/:bookId', (req, res) => {
       return res.status(404).json({ error: 'Book not found' });
     }
     
+    // PDFの場合はpages.jsonがないのでそのまま返す
+    // category が 'pdf' または original_filename が .pdf で終わる場合
+    const isPdf = book.category === 'pdf' || 
+                  (book.original_filename && book.original_filename.toLowerCase().endsWith('.pdf'));
+    
+    if (isPdf) {
+      return res.json({ ...book, category: 'pdf', total: 1, pages: [] });
+    }
+    
     const pagesPath = path.join(convertedDir, req.params.bookId, 'pages.json');
+    
+    // pages.jsonが存在しない場合のフォールバック
+    if (!fs.existsSync(pagesPath)) {
+      return res.json({ ...book, total: book.total_pages || 1, pages: [] });
+    }
+    
     const pagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
     
     res.json({ ...book, ...pagesInfo });

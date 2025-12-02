@@ -1,7 +1,7 @@
 import { Route, Routes } from 'react-router-dom'
 import Home from './pages/Home'
-import Reader from './pages/Reader'
 import PdfViewer from './pages/PdfViewer'
+import Reader from './pages/Reader'
 
 function App() {
   return (

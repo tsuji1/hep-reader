@@ -2,13 +2,13 @@
  * Reader Utility Tests
  * t-wada TDD style
  */
-import { describe, it, expect } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import {
-  fixImagePaths,
-  fixMaxWidth,
-  fixContent,
-  sortBooks,
-  getLanguageDisplayName
+    fixContent,
+    fixImagePaths,
+    fixMaxWidth,
+    getLanguageDisplayName,
+    sortBooks
 } from './reader'
 
 describe('fixImagePaths', () => {
