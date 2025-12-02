@@ -71,9 +71,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       // Handle PDF upload
       fs.mkdirSync(bookDir, { recursive: true });
       
-      // Move PDF to book directory
+      // Copy PDF to book directory (use copy+delete instead of rename for cross-device support)
       const pdfPath = path.join(bookDir, 'document.pdf');
-      fs.renameSync(filePath, pdfPath);
+      fs.copyFileSync(filePath, pdfPath);
+      fs.unlinkSync(filePath);
       
       // Save to database (PDF has 1 "page" in our system, actual pages handled by viewer)
       db.addBook(bookId, bookTitle, req.file.originalname, 1, 'pdf');
