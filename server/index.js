@@ -10,6 +10,16 @@ const db = require('./database');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// ファイル名のデコードユーティリティ
+// multerはlatin1でエンコードするため、UTF-8にデコード
+function decodeFilename(filename) {
+  try {
+    return Buffer.from(filename, 'latin1').toString('utf8')
+  } catch (e) {
+    return filename
+  }
+}
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -58,12 +68,14 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     }
 
     const filePath = req.file.path;
-    const ext = path.extname(req.file.originalname).toLowerCase();
+    // ファイル名をUTF-8にデコード（multerはlatin1でエンコードする）
+    const originalFilename = decodeFilename(req.file.originalname);
+    const ext = path.extname(originalFilename).toLowerCase();
     const bookId = uuidv4();
     const bookDir = path.join(convertedDir, bookId);
 
     // Get title from filename
-    const bookTitle = path.basename(req.file.originalname, ext)
+    const bookTitle = path.basename(originalFilename, ext)
       .replace(/[-_]/g, ' ')
       .replace(/([a-z])([A-Z])/g, '$1 $2');
 
@@ -77,7 +89,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
       fs.unlinkSync(filePath);
       
       // Save to database (PDF has 1 "page" in our system, actual pages handled by viewer)
-      db.addBook(bookId, bookTitle, req.file.originalname, 1, 'pdf');
+      db.addBook(bookId, bookTitle, originalFilename, 1, 'pdf');
       
       return res.json({
         success: true,
@@ -114,7 +126,7 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     const pages = splitIntoPages(htmlContent, bookDir);
     
     // Save book info to database
-    db.addBook(bookId, bookTitle, req.file.originalname, pages.length, 'epub');
+    db.addBook(bookId, bookTitle, originalFilename, pages.length, 'epub');
 
     // Clean up original epub
     fs.unlinkSync(epubPath);

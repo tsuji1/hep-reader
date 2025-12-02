@@ -12,6 +12,16 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
+// ファイル名のデコードユーティリティ（テスト対象）
+function decodeFilename(filename) {
+  try {
+    // multerはlatin1でエンコードするため、UTF-8にデコード
+    return Buffer.from(filename, 'latin1').toString('utf8')
+  } catch (e) {
+    return filename
+  }
+}
+
 // テスト用のミニマルなExpressアプリを作成
 function createTestApp(testDbPath, testConvertedDir) {
   const app = express()
@@ -217,5 +227,42 @@ describe('API: GET /api/books/:bookId', () => {
       expect(res.status).toBe(404)
       expect(res.body.error).toBe('Book not found')
     })
+  })
+})
+
+describe('Filename Decoding', () => {
+  it('should decode Japanese filename from latin1 to utf8', () => {
+    // Arrange - multerがlatin1でエンコードした日本語ファイル名をシミュレート
+    const japaneseFilename = 'フルスクラッチで作る！UEFIベアメタルプログラミング.pdf'
+    const latin1Encoded = Buffer.from(japaneseFilename, 'utf8').toString('latin1')
+
+    // Act
+    const decoded = decodeFilename(latin1Encoded)
+
+    // Assert
+    expect(decoded).toBe(japaneseFilename)
+  })
+
+  it('should handle ASCII filename without changes', () => {
+    // Arrange
+    const asciiFilename = 'test-book.epub'
+
+    // Act
+    const decoded = decodeFilename(asciiFilename)
+
+    // Assert
+    expect(decoded).toBe(asciiFilename)
+  })
+
+  it('should handle mixed Japanese and ASCII filename', () => {
+    // Arrange
+    const mixedFilename = '日本語Title_123.epub'
+    const latin1Encoded = Buffer.from(mixedFilename, 'utf8').toString('latin1')
+
+    // Act
+    const decoded = decodeFilename(latin1Encoded)
+
+    // Assert
+    expect(decoded).toBe(mixedFilename)
   })
 })
