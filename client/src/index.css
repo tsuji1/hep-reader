@@ -1,0 +1,739 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Noto Sans JP', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #f5f5f5;
+  color: #333;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+/* Header */
+.header {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 20px 0;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.header h1 {
+  font-size: 1.8rem;
+  font-weight: 700;
+}
+
+.header a {
+  color: white;
+  text-decoration: none;
+}
+
+/* Upload Section */
+.upload-section {
+  background: white;
+  border-radius: 12px;
+  padding: 40px;
+  margin: 30px 0;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  text-align: center;
+}
+
+.upload-zone {
+  border: 3px dashed #ddd;
+  border-radius: 12px;
+  padding: 60px 40px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.upload-zone:hover,
+.upload-zone.dragging {
+  border-color: #667eea;
+  background: #f8f9ff;
+}
+
+.upload-zone input {
+  display: none;
+}
+
+.upload-icon {
+  font-size: 3rem;
+  margin-bottom: 15px;
+}
+
+.upload-zone p {
+  color: #666;
+  font-size: 1.1rem;
+}
+
+.upload-zone .hint {
+  font-size: 0.9rem;
+  color: #999;
+  margin-top: 10px;
+}
+
+/* Book List */
+.book-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 24px;
+  margin-top: 30px;
+}
+
+.book-card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.book-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+}
+
+.book-cover {
+  width: 100%;
+  height: 280px;
+  background: linear-gradient(135deg, #f5f5f5 0%, #e0e0e0 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.book-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: white;
+}
+
+.book-cover .no-cover-icon {
+  font-size: 4rem;
+  position: absolute;
+  display: none;
+}
+
+.book-cover.no-cover .no-cover-icon {
+  display: block;
+}
+
+.book-info {
+  padding: 20px;
+}
+
+.book-card h3 {
+  font-size: 1rem;
+  margin-bottom: 8px;
+  color: #333;
+  word-break: break-word;
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.book-card .meta {
+  font-size: 0.85rem;
+  color: #888;
+}
+
+.book-card .progress-bar {
+  height: 4px;
+  background: #eee;
+  border-radius: 2px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.book-card .progress-bar .fill {
+  height: 100%;
+  background: linear-gradient(90deg, #667eea, #764ba2);
+  border-radius: 2px;
+  transition: width 0.3s ease;
+}
+
+.book-card .delete-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255, 71, 87, 0.9);
+  color: white;
+  border: none;
+  width: 28px;
+  height: 28px;
+  z-index: 10;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  font-size: 14px;
+}
+
+.book-card .edit-btn {
+  position: absolute;
+  top: 10px;
+  right: 45px;
+  background: rgba(102, 126, 234, 0.9);
+  color: white;
+  border: none;
+  width: 28px;
+  height: 28px;
+  z-index: 10;
+  border-radius: 50%;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  font-size: 14px;
+}
+
+.book-card:hover .delete-btn,
+.book-card:hover .edit-btn {
+  opacity: 1;
+}
+
+.book-card .delete-btn:hover {
+  background: #ff3344;
+}
+
+.book-card .edit-btn:hover {
+  background: #5569d4;
+}
+
+/* Reader */
+.reader {
+  display: flex;
+  height: 100vh;
+}
+
+.reader-sidebar {
+  width: 320px;
+  background: white;
+  border-right: 1px solid #eee;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  transition: width 0.3s ease;
+}
+
+.reader-sidebar.collapsed {
+  width: 0;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 15px 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.sidebar-header h2 {
+  font-size: 1rem;
+  margin-bottom: 5px;
+}
+
+.close-sidebar-btn {
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #999;
+  padding: 5px;
+  line-height: 1;
+}
+
+.close-sidebar-btn:hover {
+  color: #333;
+}
+
+.sidebar-tabs {
+  display: flex;
+  border-bottom: 1px solid #eee;
+}
+
+.sidebar-tabs button {
+  flex: 1;
+  padding: 15px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.sidebar-tabs button.active {
+  color: #667eea;
+  border-bottom: 2px solid #667eea;
+}
+
+.sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+.toc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.toc-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  gap: 10px;
+}
+
+.toc-item:hover {
+  background: #f5f5f5;
+}
+
+.toc-item.active {
+  background: #e8ecff;
+  color: #667eea;
+}
+
+.toc-item.level-1 {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.toc-item.level-2 {
+  padding-left: 20px;
+  font-size: 0.9rem;
+}
+
+.toc-item.level-3 {
+  padding-left: 32px;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.toc-title {
+  flex: 1;
+  line-height: 1.4;
+  word-break: break-word;
+}
+
+.toc-page {
+  font-size: 0.8rem;
+  color: #999;
+  white-space: nowrap;
+}
+
+.bookmark-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: #f9f9f9;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.bookmark-item:hover {
+  background: #f0f0f0;
+}
+
+.bookmark-item.active {
+  background: #e8ecff;
+  border: 1px solid #667eea;
+}
+
+.bookmark-item .page {
+  font-weight: 600;
+  color: #667eea;
+}
+
+.bookmark-item .note {
+  font-size: 0.85rem;
+  color: #666;
+  margin-left: 10px;
+  flex: 1;
+}
+
+.bookmark-item .delete {
+  background: none;
+  border: none;
+  color: #ff4757;
+  cursor: pointer;
+  padding: 5px;
+}
+
+/* Reader Main */
+.reader-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.reader-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 15px 20px;
+  background: white;
+  border-bottom: 1px solid #eee;
+}
+
+.reader-toolbar .nav-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.reader-toolbar button {
+  padding: 10px 20px;
+  border: none;
+  background: #667eea;
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  font-size: 0.9rem;
+}
+
+.reader-toolbar button:hover:not(:disabled) {
+  background: #5569d4;
+}
+
+.reader-toolbar button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.reader-toolbar button.secondary {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.reader-toolbar button.secondary:hover {
+  background: #e0e0e0;
+}
+
+.reader-toolbar button.bookmark-btn {
+  background: #f8f9ff;
+  color: #667eea;
+  border: 1px solid #667eea;
+}
+
+.reader-toolbar button.bookmark-btn.active {
+  background: #667eea;
+  color: white;
+}
+
+.view-mode-toggle {
+  display: flex;
+  background: #f0f0f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.view-mode-toggle button {
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.view-mode-toggle button:hover {
+  background: #e0e0e0;
+}
+
+.view-mode-toggle button.active {
+  background: #667eea;
+  color: white;
+}
+
+.page-info {
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.page-info.clickable {
+  cursor: pointer;
+  padding: 8px 16px;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  background: #f8f9ff;
+  border: 1px solid #e2e8f0;
+}
+
+.page-info.clickable:hover {
+  background: #e8ecff;
+  border-color: #667eea;
+  color: #667eea;
+}
+
+/* Sort Controls */
+.sort-controls {
+  display: flex;
+  align-items: center;
+}
+
+.sort-select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  background: white;
+  cursor: pointer;
+  min-width: 140px;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.reader-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px 40px;
+  background: #fafafa;
+}
+
+.reader-content iframe {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+
+.content-html {
+  max-width: 1200px;
+  width: 100%;
+  margin: 0 auto;
+  background: white;
+  padding: 40px 60px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  line-height: 1.8;
+  font-size: 1.05rem;
+}
+
+.content-html img {
+  max-width: 100%;
+  height: auto;
+}
+
+.content-html pre {
+  background: #f4f4f4;
+  padding: 15px;
+  overflow-x: auto;
+  border-radius: 6px;
+}
+
+.content-html code {
+  background: #f4f4f4;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-family: 'Fira Code', monospace;
+}
+
+/* Continuous scroll with page markers */
+.content-continuous {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.page-section {
+  position: relative;
+  border-bottom: 1px dashed #e0e0e0;
+  padding-bottom: 40px;
+  margin-bottom: 20px;
+}
+
+.page-section:last-child {
+  border-bottom: none;
+  margin-bottom: 0;
+}
+
+.page-section.current .page-marker {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+}
+
+.page-marker {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: #f0f0f0;
+  color: #666;
+  padding: 8px 16px;
+  font-size: 0.85rem;
+  border-radius: 0 0 8px 8px;
+  width: fit-content;
+  margin: 0 auto 20px auto;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  transition: all 0.2s ease;
+}
+
+.page-marker span {
+  font-weight: 500;
+}
+
+/* Single page mode */
+.content-single-page {
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Loading & Error */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: #666;
+}
+
+.loading::after {
+  content: '';
+  width: 30px;
+  height: 30px;
+  border: 3px solid #eee;
+  border-top-color: #667eea;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-left: 10px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.error {
+  background: #fff5f5;
+  color: #c53030;
+  padding: 20px;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #888;
+}
+
+.empty-state .icon {
+  font-size: 4rem;
+  margin-bottom: 20px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0,0,0,0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  padding: 30px;
+  max-width: 400px;
+  width: 90%;
+}
+
+.modal h3 {
+  margin-bottom: 20px;
+}
+
+.modal input,
+.modal textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 1rem;
+  margin-bottom: 15px;
+}
+
+.modal .buttons {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+}
+
+.modal button {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.modal button.primary {
+  background: #667eea;
+  color: white;
+}
+
+.modal button.secondary {
+  background: #f0f0f0;
+  color: #333;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .reader {
+    flex-direction: column;
+  }
+  
+  .reader-sidebar {
+    width: 100%;
+    height: auto;
+    max-height: 300px;
+  }
+  
+  .reader-sidebar.collapsed {
+    height: 0;
+  }
+  
+  .book-list {
+    grid-template-columns: 1fr;
+  }
+  
+  .reader-content {
+    padding: 20px;
+  }
+  
+  .content-html {
+    padding: 20px;
+  }
+}

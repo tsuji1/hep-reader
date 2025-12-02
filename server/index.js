@@ -1,0 +1,497 @@
+const express = require('express');
+const cors = require('cors');
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
+const { execSync } = require('child_process');
+const { v4: uuidv4 } = require('uuid');
+const db = require('./database');
+
+const app = express();
+const PORT = process.env.PORT || 3001;
+
+// Middleware
+app.use(cors());
+app.use(express.json());
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/converted', express.static(path.join(__dirname, '../converted')));
+
+// Serve static files in production
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(path.join(__dirname, '../client/dist')));
+}
+
+// Ensure directories exist
+const uploadsDir = path.join(__dirname, '../uploads');
+const convertedDir = path.join(__dirname, '../converted');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+if (!fs.existsSync(convertedDir)) fs.mkdirSync(convertedDir, { recursive: true });
+
+// Multer configuration for file uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueName = `${uuidv4()}-${file.originalname}`;
+    cb(null, uniqueName);
+  }
+});
+
+const upload = multer({
+  storage,
+  fileFilter: (req, file, cb) => {
+    if (path.extname(file.originalname).toLowerCase() === '.epub') {
+      cb(null, true);
+    } else {
+      cb(new Error('Only EPUB files are allowed'));
+    }
+  }
+});
+
+// Upload and convert EPUB to HTML
+app.post('/api/upload', upload.single('epub'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const epubPath = req.file.path;
+    const bookId = uuidv4();
+    const bookDir = path.join(convertedDir, bookId);
+    const mediaDir = path.join(bookDir, 'media');
+    const outputHtml = path.join(bookDir, 'index.html');
+
+    // Create directories
+    fs.mkdirSync(bookDir, { recursive: true });
+    fs.mkdirSync(mediaDir, { recursive: true });
+
+    // Get book title from filename
+    const bookTitle = path.basename(req.file.originalname, '.epub')
+      .replace(/[-_]/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2');
+
+    // Convert EPUB to HTML using pandoc
+    const pandocCmd = `pandoc "${epubPath}" --standalone --extract-media="${mediaDir}" --toc --metadata title="${bookTitle}" -o "${outputHtml}"`;
+    
+    try {
+      execSync(pandocCmd, { stdio: 'pipe' });
+    } catch (pandocError) {
+      console.error('Pandoc error:', pandocError.message);
+      return res.status(500).json({ error: 'Failed to convert EPUB. Make sure pandoc is installed.' });
+    }
+
+    // Read HTML and split into pages
+    let htmlContent = fs.readFileSync(outputHtml, 'utf8');
+    
+    // Extract TOC and body
+    const pages = splitIntoPages(htmlContent, bookDir);
+    
+    // Save book info to database
+    db.addBook(bookId, bookTitle, req.file.originalname, pages.length);
+
+    // Clean up original epub
+    fs.unlinkSync(epubPath);
+
+    res.json({
+      success: true,
+      bookId,
+      title: bookTitle,
+      totalPages: pages.length
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Split HTML content into pages
+function splitIntoPages(htmlContent, bookDir) {
+  // Extract head section
+  const headMatch = htmlContent.match(/<head>([\s\S]*?)<\/head>/i);
+  const headContent = headMatch ? headMatch[1] : '';
+  
+  // Extract body content
+  const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+  const bodyContent = bodyMatch ? bodyMatch[1] : htmlContent;
+
+  // Extract TOC (table of contents)
+  const tocMatch = bodyContent.match(/<nav[^>]*id="TOC"[^>]*>([\s\S]*?)<\/nav>/i);
+  const tocContent = tocMatch ? tocMatch[0] : '';
+  
+  // Remove TOC from body for splitting
+  let contentWithoutToc = bodyContent.replace(/<nav[^>]*id="TOC"[^>]*>[\s\S]*?<\/nav>/i, '');
+
+  // Split by major sections (h1, h2) or chapter markers
+  const sectionRegex = /(<(?:section|div)[^>]*class="[^"]*level1[^"]*"[^>]*>[\s\S]*?<\/(?:section|div)>)|(<h1[^>]*>[\s\S]*?)(?=<h1|$)/gi;
+  let sections = contentWithoutToc.match(sectionRegex);
+  
+  // If no sections found, split by h2 or create single page
+  if (!sections || sections.length === 0) {
+    const h2Regex = /<h2[^>]*>[\s\S]*?(?=<h2|$)/gi;
+    sections = contentWithoutToc.match(h2Regex);
+  }
+  
+  // If still no sections, treat entire content as one page
+  if (!sections || sections.length === 0) {
+    sections = [contentWithoutToc];
+  }
+
+  // Create pages directory
+  const pagesDir = path.join(bookDir, 'pages');
+  fs.mkdirSync(pagesDir, { recursive: true });
+
+  // Save TOC
+  fs.writeFileSync(path.join(bookDir, 'toc.html'), tocContent);
+  
+  // Add custom styles
+  const customStyles = `
+    <style>
+      body { 
+        font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
+        line-height: 1.8;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #fafafa;
+        color: #333;
+      }
+      img { max-width: 100%; height: auto; }
+      pre { 
+        background: #f4f4f4; 
+        padding: 15px; 
+        overflow-x: auto;
+        border-radius: 5px;
+      }
+      code { 
+        background: #f4f4f4; 
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+      h1, h2, h3 { color: #2c3e50; }
+      a { color: #3498db; }
+    </style>
+  `;
+
+  // Save each page
+  const pages = sections.map((section, index) => {
+    const pageHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  ${headContent}
+  ${customStyles}
+</head>
+<body>
+  ${section}
+</body>
+</html>`;
+    
+    const pageFile = `page-${index + 1}.html`;
+    fs.writeFileSync(path.join(pagesDir, pageFile), pageHtml);
+    return pageFile;
+  });
+
+  // Save pages index
+  fs.writeFileSync(
+    path.join(bookDir, 'pages.json'),
+    JSON.stringify({ total: pages.length, pages })
+  );
+
+  return pages;
+}
+
+// Get all books
+app.get('/api/books', (req, res) => {
+  try {
+    const books = db.getAllBooks();
+    res.json(books);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get book info
+app.get('/api/books/:bookId', (req, res) => {
+  try {
+    const book = db.getBook(req.params.bookId);
+    if (!book) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+    
+    const pagesPath = path.join(convertedDir, req.params.bookId, 'pages.json');
+    const pagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
+    
+    res.json({ ...book, ...pagesInfo });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get book page content
+app.get('/api/books/:bookId/page/:pageNum', (req, res) => {
+  try {
+    const { bookId, pageNum } = req.params;
+    const pagePath = path.join(convertedDir, bookId, 'pages', `page-${pageNum}.html`);
+    
+    if (!fs.existsSync(pagePath)) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+    
+    const content = fs.readFileSync(pagePath, 'utf8');
+    res.json({ content, pageNum: parseInt(pageNum) });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all pages content
+app.get('/api/books/:bookId/all-pages', (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const pagesPath = path.join(convertedDir, bookId, 'pages.json');
+    
+    if (!fs.existsSync(pagesPath)) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+    
+    const pagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
+    const pages = [];
+    
+    for (let i = 1; i <= pagesInfo.total; i++) {
+      const pagePath = path.join(convertedDir, bookId, 'pages', `page-${i}.html`);
+      if (fs.existsSync(pagePath)) {
+        const content = fs.readFileSync(pagePath, 'utf8');
+        // Extract body content only
+        const bodyMatch = content.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+        pages.push({
+          pageNum: i,
+          content: bodyMatch ? bodyMatch[1] : content
+        });
+      }
+    }
+    
+    res.json({ pages, total: pagesInfo.total });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get book TOC - extract headings from all pages
+app.get('/api/books/:bookId/toc', (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const pagesPath = path.join(convertedDir, bookId, 'pages.json');
+    
+    if (!fs.existsSync(pagesPath)) {
+      return res.json({ toc: [] });
+    }
+    
+    const pagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
+    const toc = [];
+    
+    // Extract headings from each page
+    for (let i = 1; i <= pagesInfo.total; i++) {
+      const pagePath = path.join(convertedDir, bookId, 'pages', `page-${i}.html`);
+      if (fs.existsSync(pagePath)) {
+        const content = fs.readFileSync(pagePath, 'utf8');
+        
+        // Extract h1, h2, h3 headings
+        const headingRegex = /<h([123])[^>]*>([^<]*(?:<[^/h][^>]*>[^<]*<\/[^h][^>]*>)*[^<]*)<\/h\1>/gi;
+        let match;
+        
+        while ((match = headingRegex.exec(content)) !== null) {
+          const level = parseInt(match[1]);
+          // Clean up the heading text (remove HTML tags)
+          const title = match[2].replace(/<[^>]*>/g, '').trim();
+          
+          if (title && title.length > 0 && title.length < 200) {
+            toc.push({
+              page: i,
+              level,
+              title
+            });
+          }
+        }
+      }
+    }
+    
+    res.json({ toc });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Bookmark APIs
+app.get('/api/books/:bookId/bookmarks', (req, res) => {
+  try {
+    const bookmarks = db.getBookmarks(req.params.bookId);
+    res.json(bookmarks);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/books/:bookId/bookmarks', (req, res) => {
+  try {
+    const { pageNum, note } = req.body;
+    const bookmark = db.addBookmark(req.params.bookId, pageNum, note);
+    res.json(bookmark);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.delete('/api/bookmarks/:bookmarkId', (req, res) => {
+  try {
+    db.deleteBookmark(req.params.bookmarkId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Reading progress
+app.get('/api/books/:bookId/progress', (req, res) => {
+  try {
+    const progress = db.getProgress(req.params.bookId);
+    res.json(progress || { currentPage: 1 });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/books/:bookId/progress', (req, res) => {
+  try {
+    const { currentPage } = req.body;
+    db.saveProgress(req.params.bookId, currentPage);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Delete book
+app.delete('/api/books/:bookId', (req, res) => {
+  try {
+    const { bookId } = req.params;
+    
+    // Delete from database
+    db.deleteBook(bookId);
+    
+    // Delete files
+    const bookDir = path.join(convertedDir, bookId);
+    if (fs.existsSync(bookDir)) {
+      fs.rmSync(bookDir, { recursive: true });
+    }
+    
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update book info
+app.patch('/api/books/:bookId', (req, res) => {
+  try {
+    const { bookId } = req.params;
+    const { title, language } = req.body;
+    
+    const updated = db.updateBook(bookId, { title, language });
+    if (!updated) {
+      return res.status(404).json({ error: 'Book not found' });
+    }
+    
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Serve media files
+app.get('/api/books/:bookId/media/*', (req, res) => {
+  const mediaPath = path.join(convertedDir, req.params.bookId, 'media', req.params[0]);
+  if (fs.existsSync(mediaPath)) {
+    res.sendFile(mediaPath);
+  } else {
+    res.status(404).json({ error: 'Media not found' });
+  }
+});
+
+// Get cover image for a book
+app.get('/api/books/:bookId/cover', (req, res) => {
+  const { bookId } = req.params;
+  const mediaDir = path.join(convertedDir, bookId, 'media');
+  
+  if (!fs.existsSync(mediaDir)) {
+    return res.status(404).json({ error: 'No media found' });
+  }
+  
+  // Find cover image - check common patterns
+  const findCover = (dir) => {
+    const items = fs.readdirSync(dir, { withFileTypes: true });
+    
+    for (const item of items) {
+      const fullPath = path.join(dir, item.name);
+      
+      if (item.isDirectory()) {
+        const found = findCover(fullPath);
+        if (found) return found;
+      } else if (item.isFile()) {
+        const ext = path.extname(item.name).toLowerCase();
+        if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+          const name = item.name.toLowerCase();
+          // Prioritize cover images
+          if (name.includes('cover')) {
+            return fullPath;
+          }
+        }
+      }
+    }
+    return null;
+  };
+  
+  // First try to find a cover image
+  let coverPath = findCover(mediaDir);
+  
+  // If no cover found, get the first image
+  if (!coverPath) {
+    const findFirstImage = (dir) => {
+      const items = fs.readdirSync(dir, { withFileTypes: true });
+      
+      for (const item of items) {
+        const fullPath = path.join(dir, item.name);
+        
+        if (item.isDirectory()) {
+          const found = findFirstImage(fullPath);
+          if (found) return found;
+        } else if (item.isFile()) {
+          const ext = path.extname(item.name).toLowerCase();
+          if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
+            return fullPath;
+          }
+        }
+      }
+      return null;
+    };
+    coverPath = findFirstImage(mediaDir);
+  }
+  
+  if (coverPath && fs.existsSync(coverPath)) {
+    res.sendFile(coverPath);
+  } else {
+    res.status(404).json({ error: 'No cover found' });
+  }
+});
+
+// Serve React app for all other routes in production
+if (process.env.NODE_ENV === 'production') {
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+  });
+}
+
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`Server running on http://0.0.0.0:${PORT}`);
+});

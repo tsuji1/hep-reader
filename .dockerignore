@@ -1,0 +1,9 @@
+node_modules/
+client/node_modules/
+data/
+converted/
+uploads/
+*.log
+.DS_Store
+.env
+.git

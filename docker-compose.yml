@@ -1,0 +1,14 @@
+services:
+  epub-viewer:
+    build: .
+    container_name: epub-viewer
+    ports:
+      - "10300:10300"
+    volumes:
+      - ./data:/app/data
+      - ./converted:/app/converted
+      - ./epub:/app/epub
+    environment:
+      - PORT=10300
+      - NODE_ENV=production
+    restart: unless-stopped
