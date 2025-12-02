@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
 // PDF.js worker設定
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker
 
 function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, viewMode }) {
   const [pdf, setPdf] = useState(null)
