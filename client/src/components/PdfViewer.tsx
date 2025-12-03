@@ -502,41 +502,52 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
     return () => observer.disconnect()
   }, [viewMode, pdf, totalPages])
 
-  // スクロール時のページ検出
+  // スクロール時のページ検出（デバウンス付き）
   useEffect(() => {
     if (viewMode !== 'scroll') return
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
     const handleScroll = (): void => {
       if (isScrollingToPage.current || !containerRef.current) return
 
-      const container = containerRef.current
-      const containerRect = container.getBoundingClientRect()
-      const containerCenter = containerRect.top + containerRect.height / 3
+      // デバウンス：300ms待ってからページ変更を通知
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        const container = containerRef.current
+        if (!container) return
 
-      let closestPage = 1
-      let closestDistance = Infinity
+        const containerRect = container.getBoundingClientRect()
+        const containerCenter = containerRect.top + containerRect.height / 3
 
-      for (let i = 1; i <= totalPages; i++) {
-        const pageEl = pageRefs.current[i]
-        if (pageEl) {
-          const rect = pageEl.getBoundingClientRect()
-          const distance = Math.abs(rect.top - containerCenter)
-          if (distance < closestDistance) {
-            closestDistance = distance
-            closestPage = i
+        let closestPage = 1
+        let closestDistance = Infinity
+
+        for (let i = 1; i <= totalPages; i++) {
+          const pageEl = pageRefs.current[i]
+          if (pageEl) {
+            const rect = pageEl.getBoundingClientRect()
+            const distance = Math.abs(rect.top - containerCenter)
+            if (distance < closestDistance) {
+              closestDistance = distance
+              closestPage = i
+            }
           }
         }
-      }
 
-      if (closestPage !== currentPage) {
-        onPageChange(closestPage)
-      }
+        if (closestPage !== currentPage) {
+          onPageChange(closestPage)
+        }
+      }, 300)
     }
 
     const container = containerRef.current
     if (container) {
       container.addEventListener('scroll', handleScroll, { passive: true })
-      return () => container.removeEventListener('scroll', handleScroll)
+      return () => {
+        container.removeEventListener('scroll', handleScroll)
+        if (debounceTimer) clearTimeout(debounceTimer)
+      }
     }
   }, [currentPage, totalPages, viewMode, onPageChange])
 
@@ -552,10 +563,18 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
     }
   }, [])
 
-  // currentPageが変わったらスクロール（スクロールモード時）
+  // currentPageが変わったらスクロール（スクロールモード時のみ、外部からのページ変更時）
+  const lastExternalPage = useRef<number>(currentPage)
   useEffect(() => {
-    if (viewMode === 'scroll' && pageRefs.current[currentPage]) {
+    // ページモード時はスクロール不要（単一ページ表示）
+    if (viewMode === 'page') {
+      lastExternalPage.current = currentPage
+      return
+    }
+    // スクロールモードで、外部からページが変更された場合のみスクロール
+    if (currentPage !== lastExternalPage.current && pageRefs.current[currentPage]) {
       scrollToPage(currentPage)
+      lastExternalPage.current = currentPage
     }
   }, [currentPage, viewMode, scrollToPage])
 

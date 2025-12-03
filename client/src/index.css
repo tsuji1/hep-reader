@@ -898,11 +898,17 @@ body {
   justify-content: center;
   gap: 15px;
   padding: 10px 20px;
-  background: #f0f0f0;
+  background: rgba(240, 240, 240, 0.95);
   border-bottom: 1px solid #e0e0e0;
   position: sticky;
   top: 0;
   z-index: 10;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.pdf-viewer-container:hover .pdf-controls {
+  opacity: 1;
 }
 
 .pdf-controls button {
