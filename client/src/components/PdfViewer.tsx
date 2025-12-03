@@ -502,6 +502,58 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
     return () => observer.disconnect()
   }, [viewMode, pdf, totalPages])
 
+  // スクロール時のページ検出（スクロールによる変更時はスクロール処理をスキップ）
+  const isScrollDetectedChange = useRef<boolean>(false)
+  useEffect(() => {
+    if (viewMode !== 'scroll') return
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null
+
+    const handleScroll = (): void => {
+      if (isScrollingToPage.current || !containerRef.current) return
+
+      // デバウンス：200ms待ってからページ変更を通知
+      if (debounceTimer) clearTimeout(debounceTimer)
+      debounceTimer = setTimeout(() => {
+        const container = containerRef.current
+        if (!container) return
+
+        const containerRect = container.getBoundingClientRect()
+        const containerCenter = containerRect.top + containerRect.height / 3
+
+        let closestPage = 1
+        let closestDistance = Infinity
+
+        for (let i = 1; i <= totalPages; i++) {
+          const pageEl = pageRefs.current[i]
+          if (pageEl) {
+            const rect = pageEl.getBoundingClientRect()
+            const distance = Math.abs(rect.top - containerCenter)
+            if (distance < closestDistance) {
+              closestDistance = distance
+              closestPage = i
+            }
+          }
+        }
+
+        if (closestPage !== currentPage) {
+          // スクロールによる変更であることをマーク
+          isScrollDetectedChange.current = true
+          onPageChange(closestPage)
+        }
+      }, 200)
+    }
+
+    const container = containerRef.current
+    if (container) {
+      container.addEventListener('scroll', handleScroll, { passive: true })
+      return () => {
+        container.removeEventListener('scroll', handleScroll)
+        if (debounceTimer) clearTimeout(debounceTimer)
+      }
+    }
+  }, [currentPage, totalPages, viewMode, onPageChange])
+
   // ページへスクロール
   const scrollToPage = useCallback((page: number): void => {
     const pageEl = pageRefs.current[page]
@@ -514,7 +566,7 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
     }
   }, [])
 
-  // currentPageが変わったらスクロール（スクロールモード時のみ、外部からのページ変更時）
+  // currentPageが変わったらスクロール（外部からのページ変更時のみ）
   const lastExternalPage = useRef<number>(currentPage)
   useEffect(() => {
     // ページモード時はスクロール不要（単一ページ表示）
@@ -522,7 +574,15 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
       lastExternalPage.current = currentPage
       return
     }
-    // スクロールモードで、外部からページが変更された場合のみスクロール
+    
+    // スクロール検出による変更の場合はスクロールしない
+    if (isScrollDetectedChange.current) {
+      isScrollDetectedChange.current = false
+      lastExternalPage.current = currentPage
+      return
+    }
+    
+    // 外部からページが変更された場合のみスクロール（ナビボタン等）
     if (currentPage !== lastExternalPage.current && pageRefs.current[currentPage]) {
       scrollToPage(currentPage)
       lastExternalPage.current = currentPage
