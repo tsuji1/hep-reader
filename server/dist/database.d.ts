@@ -1,8 +1,15 @@
-import type { Book, BookInput, Bookmark, ReadingProgress, Clip, ClipPosition } from './types';
+import type { Book, BookInput, Bookmark, Clip, ClipPosition, ReadingProgress } from './types';
 export declare function addBook(id: string, title: string, originalFilename: string, totalPages: number, bookType?: 'epub' | 'pdf'): {
     id: string;
     title: string;
     originalFilename: string;
+    totalPages: number;
+    bookType: string;
+};
+export declare function addWebsiteBook(id: string, title: string, sourceUrl: string, totalPages: number): {
+    id: string;
+    title: string;
+    sourceUrl: string;
     totalPages: number;
     bookType: string;
 };
@@ -24,12 +31,26 @@ export declare function addClip(bookId: string, pageNum: number, imageData: stri
 export declare function getClips(bookId: string): Clip[];
 export declare function getClip(id: string): Clip | undefined;
 export declare function deleteClip(id: string): void;
+export declare function updatePdfTotalPages(bookId: string, pdfTotalPages: number): void;
+export interface TagRecord {
+    id: string;
+    name: string;
+    color: string;
+}
+export declare function getAllTags(): TagRecord[];
+export declare function createTag(name: string, color?: string): TagRecord;
+export declare function deleteTag(id: string): void;
+export declare function getBookTags(bookId: string): TagRecord[];
+export declare function addTagToBook(bookId: string, tagId: string): void;
+export declare function removeTagFromBook(bookId: string, tagId: string): void;
 declare const _default: {
     addBook: typeof addBook;
+    addWebsiteBook: typeof addWebsiteBook;
     getAllBooks: typeof getAllBooks;
     getBook: typeof getBook;
     deleteBook: typeof deleteBook;
     updateBook: typeof updateBook;
+    updatePdfTotalPages: typeof updatePdfTotalPages;
     addBookmark: typeof addBookmark;
     getBookmarks: typeof getBookmarks;
     deleteBookmark: typeof deleteBookmark;
@@ -39,6 +60,12 @@ declare const _default: {
     getClips: typeof getClips;
     getClip: typeof getClip;
     deleteClip: typeof deleteClip;
+    getAllTags: typeof getAllTags;
+    createTag: typeof createTag;
+    deleteTag: typeof deleteTag;
+    getBookTags: typeof getBookTags;
+    addTagToBook: typeof addTagToBook;
+    removeTagFromBook: typeof removeTagFromBook;
 };
 export default _default;
 //# sourceMappingURL=database.d.ts.map

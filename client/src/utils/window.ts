@@ -1,4 +1,4 @@
-import type { ImageInfo, Clip } from '../types'
+import type { Clip, ImageInfo } from '../types'
 
 /**
  * 画像を新しいウィンドウで開く

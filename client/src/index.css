@@ -79,6 +79,66 @@ body {
   margin-top: 10px;
 }
 
+/* URL Input Section */
+.url-input-section {
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+.url-input-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.url-icon {
+  font-size: 1.5rem;
+}
+
+.url-input {
+  flex: 1;
+  padding: 12px 16px;
+  border: 2px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.2s ease;
+}
+
+.url-input:focus {
+  outline: none;
+  border-color: #667eea;
+}
+
+.url-input:disabled {
+  background: #f5f5f5;
+  cursor: not-allowed;
+}
+
+.url-save-btn {
+  padding: 12px 24px;
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  white-space: nowrap;
+}
+
+.url-save-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.url-save-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* Book List */
 .book-list {
   display: grid;

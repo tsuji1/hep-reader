@@ -4,6 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.addBook = addBook;
+exports.addWebsiteBook = addWebsiteBook;
 exports.getAllBooks = getAllBooks;
 exports.getBook = getBook;
 exports.deleteBook = deleteBook;
@@ -17,9 +18,16 @@ exports.addClip = addClip;
 exports.getClips = getClips;
 exports.getClip = getClip;
 exports.deleteClip = deleteClip;
+exports.updatePdfTotalPages = updatePdfTotalPages;
+exports.getAllTags = getAllTags;
+exports.createTag = createTag;
+exports.deleteTag = deleteTag;
+exports.getBookTags = getBookTags;
+exports.addTagToBook = addTagToBook;
+exports.removeTagFromBook = removeTagFromBook;
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
-const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
+const path_1 = __importDefault(require("path"));
 const uuid_1 = require("uuid");
 // ルートディレクトリ（コンパイル後は server/dist/ にあるため2階層上）
 const ROOT_DIR = path_1.default.join(__dirname, '../..');
@@ -102,6 +110,39 @@ try {
 catch (e) {
     // Columns already exist
 }
+// Migration: Add source_url column for website bookmarks
+try {
+    db.exec(`ALTER TABLE books ADD COLUMN source_url TEXT`);
+}
+catch (e) {
+    // Column already exists
+}
+// Migration: Add pdf_total_pages column for accurate PDF progress tracking
+try {
+    db.exec(`ALTER TABLE books ADD COLUMN pdf_total_pages INTEGER`);
+}
+catch (e) {
+    // Column already exists
+}
+// Tags table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS tags (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
+    color TEXT DEFAULT '#667eea'
+  );
+  
+  CREATE TABLE IF NOT EXISTS book_tags (
+    book_id TEXT NOT NULL,
+    tag_id TEXT NOT NULL,
+    PRIMARY KEY (book_id, tag_id),
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE,
+    FOREIGN KEY (tag_id) REFERENCES tags(id) ON DELETE CASCADE
+  );
+  
+  CREATE INDEX IF NOT EXISTS idx_book_tags_book ON book_tags(book_id);
+  CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag_id);
+`);
 // Books
 function addBook(id, title, originalFilename, totalPages, bookType = 'epub') {
     const stmt = db.prepare(`
@@ -110,6 +151,14 @@ function addBook(id, title, originalFilename, totalPages, bookType = 'epub') {
   `);
     stmt.run(id, title, originalFilename, totalPages, bookType);
     return { id, title, originalFilename, totalPages, bookType };
+}
+function addWebsiteBook(id, title, sourceUrl, totalPages) {
+    const stmt = db.prepare(`
+    INSERT INTO books (id, title, source_url, total_pages, book_type)
+    VALUES (?, ?, ?, ?, 'website')
+  `);
+    stmt.run(id, title, sourceUrl, totalPages);
+    return { id, title, sourceUrl, totalPages, bookType: 'website' };
 }
 function getAllBooks() {
     const stmt = db.prepare(`
@@ -232,13 +281,55 @@ function deleteClip(id) {
     const stmt = db.prepare('DELETE FROM clips WHERE id = ?');
     stmt.run(id);
 }
+// Update PDF total pages (actual page count from PDF.js)
+function updatePdfTotalPages(bookId, pdfTotalPages) {
+    const stmt = db.prepare(`
+    UPDATE books SET pdf_total_pages = ? WHERE id = ?
+  `);
+    stmt.run(pdfTotalPages, bookId);
+}
+function getAllTags() {
+    const stmt = db.prepare('SELECT * FROM tags ORDER BY name');
+    return stmt.all();
+}
+function createTag(name, color = '#667eea') {
+    const id = (0, uuid_1.v4)();
+    const stmt = db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)');
+    stmt.run(id, name, color);
+    return { id, name, color };
+}
+function deleteTag(id) {
+    const stmt = db.prepare('DELETE FROM tags WHERE id = ?');
+    stmt.run(id);
+}
+function getBookTags(bookId) {
+    const stmt = db.prepare(`
+    SELECT t.* FROM tags t
+    JOIN book_tags bt ON t.id = bt.tag_id
+    WHERE bt.book_id = ?
+    ORDER BY t.name
+  `);
+    return stmt.all(bookId);
+}
+function addTagToBook(bookId, tagId) {
+    const stmt = db.prepare(`
+    INSERT OR IGNORE INTO book_tags (book_id, tag_id) VALUES (?, ?)
+  `);
+    stmt.run(bookId, tagId);
+}
+function removeTagFromBook(bookId, tagId) {
+    const stmt = db.prepare('DELETE FROM book_tags WHERE book_id = ? AND tag_id = ?');
+    stmt.run(bookId, tagId);
+}
 // Default export for backward compatibility
 exports.default = {
     addBook,
+    addWebsiteBook,
     getAllBooks,
     getBook,
     deleteBook,
     updateBook,
+    updatePdfTotalPages,
     addBookmark,
     getBookmarks,
     deleteBookmark,
@@ -247,6 +338,12 @@ exports.default = {
     addClip,
     getClips,
     getClip,
-    deleteClip
+    deleteClip,
+    getAllTags,
+    createTag,
+    deleteTag,
+    getBookTags,
+    addTagToBook,
+    removeTagFromBook
 };
 //# sourceMappingURL=database.js.map

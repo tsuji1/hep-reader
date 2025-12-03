@@ -4,17 +4,36 @@ export interface Book {
   title: string;
   original_filename: string | null;
   total_pages: number;
+  pdf_total_pages: number | null;
   category: string | null;
   language: string;
-  book_type: 'epub' | 'pdf';
+  book_type: 'epub' | 'pdf' | 'website';
+  source_url: string | null;
   created_at: string;
   updated_at: string;
   current_page?: number;
+  tags?: Tag[];
+}
+
+// Tag types
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export interface BookInput {
   title?: string;
   language?: string;
+}
+
+// Website metadata
+export interface WebsiteMetadata {
+  title: string;
+  description: string | null;
+  ogImage: string | null;
+  favicon: string | null;
+  siteName: string | null;
 }
 
 // Bookmark types
@@ -59,7 +78,7 @@ export interface UploadResponse {
   success: boolean;
   bookId: string;
   title: string;
-  bookType: 'epub' | 'pdf';
+  bookType: 'epub' | 'pdf' | 'website';
   totalPages: number;
 }
 
@@ -77,6 +96,11 @@ export interface TocItem {
   page: number;
   level: number;
   title: string;
+}
+
+export interface BookTag {
+  book_id: string;
+  tag_id: string;
 }
 
 export interface AllPagesResponse {

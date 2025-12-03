@@ -1,14 +1,48 @@
 "use strict";
+var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    var desc = Object.getOwnPropertyDescriptor(m, k);
+    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
+      desc = { enumerable: true, get: function() { return m[k]; } };
+    }
+    Object.defineProperty(o, k2, desc);
+}) : (function(o, m, k, k2) {
+    if (k2 === undefined) k2 = k;
+    o[k2] = m[k];
+}));
+var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
+    Object.defineProperty(o, "default", { enumerable: true, value: v });
+}) : function(o, v) {
+    o["default"] = v;
+});
+var __importStar = (this && this.__importStar) || (function () {
+    var ownKeys = function(o) {
+        ownKeys = Object.getOwnPropertyNames || function (o) {
+            var ar = [];
+            for (var k in o) if (Object.prototype.hasOwnProperty.call(o, k)) ar[ar.length] = k;
+            return ar;
+        };
+        return ownKeys(o);
+    };
+    return function (mod) {
+        if (mod && mod.__esModule) return mod;
+        var result = {};
+        if (mod != null) for (var k = ownKeys(mod), i = 0; i < k.length; i++) if (k[i] !== "default") __createBinding(result, mod, k[i]);
+        __setModuleDefault(result, mod);
+        return result;
+    };
+})();
 var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const express_1 = __importDefault(require("express"));
+const cheerio = __importStar(require("cheerio"));
+const child_process_1 = require("child_process");
 const cors_1 = __importDefault(require("cors"));
+const express_1 = __importDefault(require("express"));
+const fs_1 = __importDefault(require("fs"));
 const multer_1 = __importDefault(require("multer"));
 const path_1 = __importDefault(require("path"));
-const fs_1 = __importDefault(require("fs"));
-const child_process_1 = require("child_process");
 const uuid_1 = require("uuid");
 const database_1 = __importDefault(require("./database"));
 const app = (0, express_1.default)();
@@ -211,6 +245,319 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
     }
     catch (error) {
         console.error('Upload error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// Helper: Fetch with timeout
+async function fetchWithTimeout(url, timeout = 30000) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'ja,en-US;q=0.9,en;q=0.8',
+            }
+        });
+        return response;
+    }
+    finally {
+        clearTimeout(timeoutId);
+    }
+}
+// Helper: Extract metadata from HTML
+function extractMetadata(html, baseUrl) {
+    const $ = cheerio.load(html);
+    // Get title
+    const ogTitle = $('meta[property="og:title"]').attr('content');
+    const twitterTitle = $('meta[name="twitter:title"]').attr('content');
+    const title = ogTitle || twitterTitle || $('title').text().trim() || 'Untitled';
+    // Get description
+    const ogDescription = $('meta[property="og:description"]').attr('content');
+    const metaDescription = $('meta[name="description"]').attr('content');
+    const description = ogDescription || metaDescription || null;
+    // Get OG image
+    const ogImage = $('meta[property="og:image"]').attr('content') ||
+        $('meta[name="twitter:image"]').attr('content') || null;
+    // Get favicon
+    let favicon = $('link[rel="icon"]').attr('href') ||
+        $('link[rel="shortcut icon"]').attr('href') ||
+        '/favicon.ico';
+    // Get site name
+    const siteName = $('meta[property="og:site_name"]').attr('content') || null;
+    // Resolve relative URLs
+    const resolveUrl = (url) => {
+        if (!url)
+            return null;
+        try {
+            return new URL(url, baseUrl).href;
+        }
+        catch {
+            return url;
+        }
+    };
+    return {
+        title,
+        description,
+        ogImage: resolveUrl(ogImage),
+        favicon: resolveUrl(favicon),
+        siteName
+    };
+}
+// Helper: Extract and clean article content
+function extractArticleContent(html, baseUrl) {
+    const $ = cheerio.load(html);
+    const images = [];
+    // Remove unwanted elements
+    $('script, style, nav, header, footer, aside, .ads, .advertisement, .sidebar, .menu, .navigation, .comment, .comments, #comments, .social-share, .share-buttons, .related-posts, iframe, noscript').remove();
+    // Try to find main content
+    let $content = $('article').first();
+    if ($content.length === 0)
+        $content = $('main').first();
+    if ($content.length === 0)
+        $content = $('[role="main"]').first();
+    if ($content.length === 0)
+        $content = $('.post-content, .article-content, .entry-content, .content, #content').first();
+    if ($content.length === 0)
+        $content = $('body');
+    // Process images - collect and update src
+    $content.find('img').each((_, img) => {
+        const $img = $(img);
+        let src = $img.attr('src') || $img.attr('data-src') || $img.attr('data-lazy-src');
+        if (src) {
+            try {
+                const absoluteUrl = new URL(src, baseUrl).href;
+                images.push(absoluteUrl);
+                $img.attr('src', `media/${images.length - 1}.img`);
+                $img.removeAttr('data-src');
+                $img.removeAttr('data-lazy-src');
+                $img.removeAttr('srcset');
+                $img.removeAttr('loading');
+            }
+            catch {
+                // Invalid URL, remove image
+                $img.remove();
+            }
+        }
+    });
+    // Clean up attributes
+    $content.find('*').each((_, el) => {
+        const $el = $(el);
+        // Keep only essential attributes
+        const allowedAttrs = ['src', 'href', 'alt', 'title'];
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const attrs = Object.keys(el.attribs || {});
+        attrs.forEach(attr => {
+            if (!allowedAttrs.includes(attr)) {
+                $el.removeAttr(attr);
+            }
+        });
+    });
+    // Remove empty elements
+    $content.find('div, span, p').each((_, el) => {
+        const $el = $(el);
+        if ($el.text().trim() === '' && $el.find('img').length === 0) {
+            $el.remove();
+        }
+    });
+    return {
+        content: $content.html() || '',
+        images
+    };
+}
+// Helper: Download image
+async function downloadImage(url, destPath) {
+    try {
+        const response = await fetchWithTimeout(url, 15000);
+        if (!response.ok)
+            return false;
+        const buffer = Buffer.from(await response.arrayBuffer());
+        fs_1.default.writeFileSync(destPath, buffer);
+        return true;
+    }
+    catch (e) {
+        console.error(`Failed to download image: ${url}`, e.message);
+        return false;
+    }
+}
+// Helper: Split content by headings (h1 or h2)
+function splitContentByHeadings(content, title) {
+    const $ = cheerio.load(`<div>${content}</div>`);
+    const sections = [];
+    let currentSection = '';
+    let hasHeadings = false;
+    // Check if there are any h1 or h2 headings
+    const headings = $('h1, h2');
+    if (headings.length === 0) {
+        // No headings, return as single page
+        return [content];
+    }
+    // Iterate through all direct children
+    $('div').children().each((_, el) => {
+        const $el = $(el);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const tagName = (el.tagName || el.name || '').toLowerCase();
+        if (tagName === 'h1' || tagName === 'h2') {
+            hasHeadings = true;
+            // Save previous section if it has content
+            if (currentSection.trim()) {
+                sections.push(currentSection);
+            }
+            // Start new section with this heading
+            currentSection = $.html($el) || '';
+        }
+        else {
+            // Add to current section
+            currentSection += $.html($el) || '';
+        }
+    });
+    // Don't forget the last section
+    if (currentSection.trim()) {
+        sections.push(currentSection);
+    }
+    // If we only got one section or no headings found, return as single page
+    if (sections.length <= 1 || !hasHeadings) {
+        return [content];
+    }
+    return sections;
+}
+// Save website URL
+app.post('/api/save-url', async (req, res) => {
+    try {
+        const { url } = req.body;
+        if (!url || typeof url !== 'string') {
+            return res.status(400).json({ error: 'URL is required' });
+        }
+        // Validate URL
+        let parsedUrl;
+        try {
+            parsedUrl = new URL(url);
+            if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                throw new Error('Invalid protocol');
+            }
+        }
+        catch {
+            return res.status(400).json({ error: 'Invalid URL format' });
+        }
+        // Fetch the page
+        console.log(`Fetching URL: ${url}`);
+        const response = await fetchWithTimeout(url);
+        if (!response.ok) {
+            return res.status(400).json({ error: `Failed to fetch URL: ${response.status} ${response.statusText}` });
+        }
+        const html = await response.text();
+        // Extract metadata
+        const metadata = extractMetadata(html, url);
+        console.log(`Metadata: ${JSON.stringify(metadata)}`);
+        // Extract content and images
+        const { content, images } = extractArticleContent(html, url);
+        // Create book directory
+        const bookId = (0, uuid_1.v4)();
+        const bookDir = path_1.default.join(convertedDir, bookId);
+        const mediaDir = path_1.default.join(bookDir, 'media');
+        const pagesDir = path_1.default.join(bookDir, 'pages');
+        fs_1.default.mkdirSync(bookDir, { recursive: true });
+        fs_1.default.mkdirSync(mediaDir, { recursive: true });
+        fs_1.default.mkdirSync(pagesDir, { recursive: true });
+        // Download images
+        console.log(`Downloading ${images.length} images...`);
+        for (let i = 0; i < images.length; i++) {
+            const imgUrl = images[i];
+            const ext = path_1.default.extname(new URL(imgUrl).pathname) || '.jpg';
+            const imgPath = path_1.default.join(mediaDir, `${i}${ext}`);
+            await downloadImage(imgUrl, imgPath);
+        }
+        // Download OG image as cover
+        if (metadata.ogImage) {
+            const coverExt = path_1.default.extname(new URL(metadata.ogImage).pathname) || '.jpg';
+            const coverPath = path_1.default.join(bookDir, `custom-cover${coverExt}`);
+            await downloadImage(metadata.ogImage, coverPath);
+        }
+        // Fix image paths in content (update extensions)
+        let fixedContent = content;
+        for (let i = 0; i < images.length; i++) {
+            const imgUrl = images[i];
+            const ext = path_1.default.extname(new URL(imgUrl).pathname) || '.jpg';
+            fixedContent = fixedContent.replace(new RegExp(`media/${i}\\.img`, 'g'), `media/${i}${ext}`);
+        }
+        // Split content by h1/h2 headings
+        const contentSections = splitContentByHeadings(fixedContent, metadata.title);
+        const totalPages = contentSections.length;
+        console.log(`Split into ${totalPages} pages`);
+        // Create page HTML template
+        const customStyles = `
+      <style>
+        body { 
+          font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
+          line-height: 1.8;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+          background: #fafafa;
+          color: #333;
+        }
+        img { max-width: 100%; height: auto; display: block; margin: 1em auto; }
+        pre { 
+          background: #f4f4f4; 
+          padding: 15px; 
+          overflow-x: auto;
+          border-radius: 5px;
+        }
+        code { 
+          background: #f4f4f4; 
+          padding: 2px 6px;
+          border-radius: 3px;
+        }
+        h1, h2, h3 { color: #2c3e50; }
+        a { color: #3498db; }
+        blockquote { border-left: 4px solid #3498db; margin: 1em 0; padding-left: 1em; color: #666; }
+      </style>
+    `;
+        // Save each page
+        const pageFiles = [];
+        for (let i = 0; i < contentSections.length; i++) {
+            const pageNum = i + 1;
+            const isFirstPage = i === 0;
+            const sectionContent = contentSections[i];
+            const pageHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${metadata.title}</title>
+  ${customStyles}
+</head>
+<body>
+  ${isFirstPage ? `<h1>${metadata.title}</h1>` : ''}
+  ${isFirstPage && metadata.siteName ? `<p style="color: #666; font-size: 0.9em;">Source: ${metadata.siteName}</p>` : ''}
+  ${isFirstPage ? '<hr>' : ''}
+  ${sectionContent}
+  ${pageNum === totalPages ? `<hr><p style="color: #666; font-size: 0.9em;">Original: <a href="${url}" target="_blank">${url}</a></p>` : ''}
+</body>
+</html>`;
+            const pageFile = `page-${pageNum}.html`;
+            fs_1.default.writeFileSync(path_1.default.join(pagesDir, pageFile), pageHtml);
+            pageFiles.push(pageFile);
+        }
+        // Save pages index
+        fs_1.default.writeFileSync(path_1.default.join(bookDir, 'pages.json'), JSON.stringify({ total: totalPages, pages: pageFiles }));
+        // Save metadata
+        fs_1.default.writeFileSync(path_1.default.join(bookDir, 'metadata.json'), JSON.stringify({ ...metadata, sourceUrl: url, savedAt: new Date().toISOString() }));
+        // Save to database
+        database_1.default.addWebsiteBook(bookId, metadata.title, url, totalPages);
+        res.json({
+            success: true,
+            bookId,
+            title: metadata.title,
+            bookType: 'website',
+            totalPages,
+            metadata
+        });
+    }
+    catch (error) {
+        console.error('Save URL error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -460,6 +807,94 @@ app.patch('/api/books/:bookId', (req, res) => {
             return res.status(404).json({ error: 'Book not found' });
         }
         res.json(updated);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// Update PDF total pages (actual page count from PDF.js)
+app.post('/api/books/:bookId/pdf-total-pages', (req, res) => {
+    try {
+        const { bookId } = req.params;
+        const { totalPages } = req.body;
+        if (typeof totalPages !== 'number' || totalPages < 1) {
+            return res.status(400).json({ error: 'Invalid totalPages' });
+        }
+        database_1.default.updatePdfTotalPages(bookId, totalPages);
+        res.json({ success: true });
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// ===== Tags API =====
+// Get all tags
+app.get('/api/tags', (_req, res) => {
+    try {
+        const tags = database_1.default.getAllTags();
+        res.json(tags);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// Create tag
+app.post('/api/tags', (req, res) => {
+    try {
+        const { name, color } = req.body;
+        if (!name || typeof name !== 'string') {
+            return res.status(400).json({ error: 'Tag name is required' });
+        }
+        const tag = database_1.default.createTag(name.trim(), color || '#667eea');
+        res.json(tag);
+    }
+    catch (error) {
+        const err = error;
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+            return res.status(400).json({ error: 'Tag already exists' });
+        }
+        res.status(500).json({ error: err.message });
+    }
+});
+// Delete tag
+app.delete('/api/tags/:tagId', (req, res) => {
+    try {
+        database_1.default.deleteTag(req.params.tagId);
+        res.json({ success: true });
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// Get tags for a book
+app.get('/api/books/:bookId/tags', (req, res) => {
+    try {
+        const tags = database_1.default.getBookTags(req.params.bookId);
+        res.json(tags);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// Add tag to book
+app.post('/api/books/:bookId/tags', (req, res) => {
+    try {
+        const { tagId } = req.body;
+        if (!tagId) {
+            return res.status(400).json({ error: 'tagId is required' });
+        }
+        database_1.default.addTagToBook(req.params.bookId, tagId);
+        res.json({ success: true });
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// Remove tag from book
+app.delete('/api/books/:bookId/tags/:tagId', (req, res) => {
+    try {
+        database_1.default.removeTagFromBook(req.params.bookId, req.params.tagId);
+        res.json({ success: true });
     }
     catch (error) {
         res.status(500).json({ error: error.message });

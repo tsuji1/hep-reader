@@ -4,12 +4,22 @@ export interface Book {
   title: string
   original_filename: string
   total_pages: number
+  pdf_total_pages?: number
   category?: string
   language: string
-  book_type?: 'epub' | 'pdf'
+  book_type?: 'epub' | 'pdf' | 'website'
+  source_url?: string
   current_page?: number
   created_at: string
   updated_at: string
+  tags?: Tag[]
+}
+
+// Tag Types
+export interface Tag {
+  id: string
+  name: string
+  color: string
 }
 
 // Bookmark Types

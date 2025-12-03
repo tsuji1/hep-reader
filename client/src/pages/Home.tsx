@@ -1,7 +1,7 @@
 import axios from 'axios'
-import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type MouseEvent } from 'react'
+import { useCallback, useEffect, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent, type MouseEvent } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import type { Book } from '../types'
+import type { Book, Tag } from '../types'
 
 type SortBy = 'lastRead' | 'title' | 'added'
 
@@ -18,21 +18,53 @@ function Home(): JSX.Element {
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [uploadingCover, setUploadingCover] = useState<boolean>(false)
+  const [urlInput, setUrlInput] = useState<string>('')
+  const [savingUrl, setSavingUrl] = useState<boolean>(false)
+  // タグ機能
+  const [allTags, setAllTags] = useState<Tag[]>([])
+  const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null)
+  const [bookTags, setBookTags] = useState<Record<string, Tag[]>>({})
+  const [newTagName, setNewTagName] = useState<string>('')
+  const [newTagColor, setNewTagColor] = useState<string>('#667eea')
+  const [showTagManager, setShowTagManager] = useState<boolean>(false)
+  // 編集モーダル用タグ
+  const [editBookTags, setEditBookTags] = useState<Tag[]>([])
   const coverInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
     fetchBooks()
+    fetchTags()
   }, [])
 
   const fetchBooks = async (): Promise<void> => {
     try {
       const res = await axios.get<Book[]>('/api/books')
       setBooks(res.data)
+      // 各本のタグを取得
+      const tagsMap: Record<string, Tag[]> = {}
+      for (const book of res.data) {
+        try {
+          const tagRes = await axios.get<Tag[]>(`/api/books/${book.id}/tags`)
+          tagsMap[book.id] = tagRes.data
+        } catch {
+          tagsMap[book.id] = []
+        }
+      }
+      setBookTags(tagsMap)
     } catch (error) {
       console.error('Failed to fetch books:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const fetchTags = async (): Promise<void> => {
+    try {
+      const res = await axios.get<Tag[]>('/api/tags')
+      setAllTags(res.data)
+    } catch (error) {
+      console.error('Failed to fetch tags:', error)
     }
   }
 
@@ -111,6 +143,29 @@ function Home(): JSX.Element {
     }
   }
 
+  // Save URL
+  const handleSaveUrl = async (e: FormEvent<HTMLFormElement>): Promise<void> => {
+    e.preventDefault()
+    if (!urlInput.trim()) return
+
+    setSavingUrl(true)
+    try {
+      const res = await axios.post<{ bookId: string; title: string }>('/api/save-url', {
+        url: urlInput.trim()
+      })
+      setUrlInput('')
+      fetchBooks()
+      // Navigate to the saved page
+      navigate(`/read/${res.data.bookId}`)
+    } catch (error: unknown) {
+      console.error('Save URL failed:', error)
+      const axiosError = error as { response?: { data?: { error?: string } } }
+      alert(axiosError.response?.data?.error || 'URLの保存に失敗しました')
+    } finally {
+      setSavingUrl(false)
+    }
+  }
+
   // Sort books based on selected option
   const sortedBooks = [...books].sort((a, b) => {
     switch (sortBy) {
@@ -124,6 +179,11 @@ function Home(): JSX.Element {
     }
   })
 
+  // Filter by tag
+  const filteredBooks = selectedTagFilter
+    ? sortedBooks.filter(book => bookTags[book.id]?.some(t => t.id === selectedTagFilter))
+    : sortedBooks
+
   // Open book
   const openBook = (book: Book): void => {
     if (book.book_type === 'pdf') {
@@ -134,13 +194,79 @@ function Home(): JSX.Element {
   }
 
   // Open edit modal
-  const openEditModal = (e: MouseEvent, book: Book): void => {
+  const openEditModal = async (e: MouseEvent, book: Book): Promise<void> => {
     e.stopPropagation()
     setEditingBook(book)
     setEditTitle(book.title)
     setEditLanguage(book.language || 'en')
     setCoverPreview(null)
     setCoverFile(null)
+    // 本のタグを読み込み
+    try {
+      const res = await axios.get<Tag[]>(`/api/books/${book.id}/tags`)
+      setEditBookTags(res.data)
+    } catch {
+      setEditBookTags([])
+    }
+  }
+
+  // タグ管理
+  const createTag = async (): Promise<void> => {
+    if (!newTagName.trim()) return
+    try {
+      await axios.post('/api/tags', { name: newTagName.trim(), color: newTagColor })
+      setNewTagName('')
+      setNewTagColor('#667eea')
+      fetchTags()
+    } catch (error: unknown) {
+      const axiosError = error as { response?: { data?: { error?: string } } }
+      alert(axiosError.response?.data?.error || 'タグの作成に失敗しました')
+    }
+  }
+
+  const deleteTagHandler = async (tagId: string): Promise<void> => {
+    if (!confirm('このタグを削除しますか？')) return
+    try {
+      await axios.delete(`/api/tags/${tagId}`)
+      fetchTags()
+      fetchBooks()
+    } catch (error) {
+      console.error('Failed to delete tag:', error)
+    }
+  }
+
+  const toggleBookTag = async (tagId: string): Promise<void> => {
+    if (!editingBook) return
+    const hasTag = editBookTags.some(t => t.id === tagId)
+    try {
+      if (hasTag) {
+        await axios.delete(`/api/books/${editingBook.id}/tags/${tagId}`)
+        setEditBookTags(editBookTags.filter(t => t.id !== tagId))
+      } else {
+        await axios.post(`/api/books/${editingBook.id}/tags`, { tagId })
+        const tag = allTags.find(t => t.id === tagId)
+        if (tag) setEditBookTags([...editBookTags, tag])
+      }
+      // bookTagsも更新
+      setBookTags(prev => ({
+        ...prev,
+        [editingBook.id]: hasTag
+          ? prev[editingBook.id].filter(t => t.id !== tagId)
+          : [...(prev[editingBook.id] || []), allTags.find(t => t.id === tagId)!]
+      }))
+    } catch (error) {
+      console.error('Failed to toggle tag:', error)
+    }
+  }
+
+  // Progress calculation helper
+  const getProgress = (book: Book): number => {
+    if (book.book_type === 'pdf') {
+      // PDFの場合はpdf_total_pagesを使用、ない場合は0%
+      if (!book.pdf_total_pages) return 0
+      return ((book.current_page || 1) / book.pdf_total_pages) * 100
+    }
+    return ((book.current_page || 1) / book.total_pages) * 100
   }
 
   // Handle cover image selection
@@ -245,24 +371,104 @@ function Home(): JSX.Element {
               </>
             )}
           </div>
+
+          {/* URL Input Section */}
+          <form onSubmit={handleSaveUrl} className="url-input-section">
+            <div className="url-input-wrapper">
+              <span className="url-icon">🌐</span>
+              <input
+                type="url"
+                value={urlInput}
+                onChange={(e) => setUrlInput(e.target.value)}
+                placeholder="WebサイトのURLを入力して保存..."
+                disabled={savingUrl}
+                className="url-input"
+              />
+              <button
+                type="submit"
+                disabled={savingUrl || !urlInput.trim()}
+                className="url-save-btn"
+              >
+                {savingUrl ? '保存中...' : '保存'}
+              </button>
+            </div>
+            <p className="hint" style={{ marginTop: '8px', textAlign: 'center' }}>
+              Webページの本文と画像を保存してオフラインで閲覧
+            </p>
+          </form>
         </section>
 
         <section>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
             <h2 style={{ margin: 0, color: '#333' }}>ライブラリ</h2>
-            <div className="sort-controls">
-              <label style={{ marginRight: '8px', color: '#666', fontSize: '0.9rem' }}>並び替え:</label>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value as SortBy)}
-                className="sort-select"
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+              {/* タグ管理ボタン */}
+              <button
+                onClick={() => setShowTagManager(!showTagManager)}
+                style={{
+                  padding: '6px 12px',
+                  background: '#f0f0f0',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem'
+                }}
               >
-                <option value="lastRead">最終閲覧日時</option>
-                <option value="title">タイトル順</option>
-                <option value="added">追加日時</option>
-              </select>
+                🏷️ タグ管理
+              </button>
+              <div className="sort-controls">
+                <label style={{ marginRight: '8px', color: '#666', fontSize: '0.9rem' }}>並び替え:</label>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value as SortBy)}
+                  className="sort-select"
+                >
+                  <option value="lastRead">最終閲覧日時</option>
+                  <option value="title">タイトル順</option>
+                  <option value="added">追加日時</option>
+                </select>
+              </div>
             </div>
           </div>
+
+          {/* タグフィルタ */}
+          {allTags.length > 0 && (
+            <div style={{ marginBottom: '20px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{ color: '#666', fontSize: '0.9rem' }}>タグで絞り込み:</span>
+              <button
+                onClick={() => setSelectedTagFilter(null)}
+                className={`tag-filter-btn ${selectedTagFilter === null ? 'active' : ''}`}
+                style={{
+                  padding: '4px 12px',
+                  border: 'none',
+                  borderRadius: '20px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  background: selectedTagFilter === null ? '#667eea' : '#e2e8f0',
+                  color: selectedTagFilter === null ? 'white' : '#333'
+                }}
+              >
+                すべて
+              </button>
+              {allTags.map(tag => (
+                <button
+                  key={tag.id}
+                  onClick={() => setSelectedTagFilter(selectedTagFilter === tag.id ? null : tag.id)}
+                  style={{
+                    padding: '4px 12px',
+                    border: 'none',
+                    borderRadius: '20px',
+                    cursor: 'pointer',
+                    fontSize: '0.85rem',
+                    background: selectedTagFilter === tag.id ? tag.color : '#e2e8f0',
+                    color: selectedTagFilter === tag.id ? 'white' : '#333'
+                  }}
+                >
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          )}
           
           {loading ? (
             <div className="loading">読み込み中</div>
@@ -274,7 +480,7 @@ function Home(): JSX.Element {
             </div>
           ) : (
             <div className="book-list">
-              {sortedBooks.map((book) => (
+              {filteredBooks.map((book) => (
                 <div
                   key={book.id}
                   className="book-card"
@@ -304,27 +510,60 @@ function Home(): JSX.Element {
                         target.parentElement?.classList.add('no-cover')
                       }}
                     />
-                    <div className="no-cover-icon">{book.book_type === 'pdf' ? '📄' : '📖'}</div>
-                    {book.book_type === 'pdf' && (
-                      <div className="book-type-badge">PDF</div>
-                    )}
+                    <div className="no-cover-icon">
+                      {book.book_type === 'pdf' ? '📄' : book.book_type === 'website' ? '🌐' : '📖'}
+                    </div>
+                    {/* 左上にタイプバッジ */}
+                    <div 
+                      className="book-type-badge"
+                      style={{ 
+                        background: book.book_type === 'pdf' ? '#ef4444' 
+                                  : book.book_type === 'website' ? '#10b981' 
+                                  : '#667eea' 
+                      }}
+                    >
+                      {book.book_type === 'pdf' ? 'PDF' : book.book_type === 'website' ? 'WEB' : 'EPUB'}
+                    </div>
                   </div>
                   <div className="book-info">
                     <h3>{book.title}</h3>
                     <div className="meta">
-                      {book.book_type === 'pdf' ? 'PDF' : `${book.total_pages}ページ`}
-                      {book.book_type !== 'pdf' && book.current_page && (
-                        <> • {Math.round((book.current_page / book.total_pages) * 100)}% 読了</>
+                      {book.book_type === 'pdf' 
+                        ? `PDF${book.pdf_total_pages ? ` • ${book.pdf_total_pages}ページ` : ''}`
+                        : book.book_type === 'website' 
+                        ? 'Webページ' 
+                        : `${book.total_pages}ページ`}
+                      {book.current_page && book.current_page > 1 && (
+                        <> • {Math.round(getProgress(book))}% 読了</>
                       )}
                     </div>
                     <div className="meta" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
                       🌐 {book.language === 'ja' ? '日本語' : book.language === 'en' ? '英語' : book.language || '英語'}
                     </div>
+                    {/* タグ表示 */}
+                    {bookTags[book.id]?.length > 0 && (
+                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                        {bookTags[book.id].map(tag => (
+                          <span
+                            key={tag.id}
+                            style={{
+                              padding: '2px 8px',
+                              background: tag.color,
+                              color: 'white',
+                              borderRadius: '10px',
+                              fontSize: '0.7rem'
+                            }}
+                          >
+                            {tag.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                     <div className="progress-bar">
                       <div
                         className="fill"
                         style={{
-                          width: `${((book.current_page || 1) / book.total_pages) * 100}%`
+                          width: `${getProgress(book)}%`
                         }}
                       />
                     </div>
@@ -335,6 +574,102 @@ function Home(): JSX.Element {
           )}
         </section>
       </main>
+
+      {/* タグ管理モーダル */}
+      {showTagManager && (
+        <div className="modal-overlay" onClick={() => setShowTagManager(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <h3>🏷️ タグ管理</h3>
+            
+            <div style={{ marginBottom: '20px' }}>
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
+                <input
+                  type="text"
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  placeholder="新しいタグ名"
+                  style={{
+                    flex: 1,
+                    padding: '8px 12px',
+                    border: '1px solid #ddd',
+                    borderRadius: '6px'
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && createTag()}
+                />
+                <input
+                  type="color"
+                  value={newTagColor}
+                  onChange={(e) => setNewTagColor(e.target.value)}
+                  style={{ width: '40px', height: '36px', border: 'none', cursor: 'pointer' }}
+                />
+                <button
+                  onClick={createTag}
+                  style={{
+                    padding: '8px 16px',
+                    background: '#667eea',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '6px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  追加
+                </button>
+              </div>
+            </div>
+
+            <div style={{ maxHeight: '300px', overflowY: 'auto' }}>
+              {allTags.length === 0 ? (
+                <p style={{ color: '#888', textAlign: 'center' }}>タグがありません</p>
+              ) : (
+                allTags.map(tag => (
+                  <div
+                    key={tag.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '8px 12px',
+                      background: '#f8f9fa',
+                      borderRadius: '6px',
+                      marginBottom: '8px'
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span
+                        style={{
+                          width: '16px',
+                          height: '16px',
+                          borderRadius: '50%',
+                          background: tag.color
+                        }}
+                      />
+                      {tag.name}
+                    </span>
+                    <button
+                      onClick={() => deleteTagHandler(tag.id)}
+                      style={{
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#dc3545'
+                      }}
+                    >
+                      🗑️
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <div className="buttons" style={{ marginTop: '20px' }}>
+              <button className="secondary" onClick={() => setShowTagManager(false)}>
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Edit Book Modal */}
       {editingBook && (
@@ -466,6 +801,43 @@ function Home(): JSX.Element {
               <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '5px' }}>
                 ※ 自動翻訳機能で使用されます
               </p>
+            </div>
+
+            {/* タグ選択 */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                🏷️ タグ
+              </label>
+              {allTags.length === 0 ? (
+                <p style={{ fontSize: '0.85rem', color: '#888' }}>
+                  タグがありません。「タグ管理」から追加してください。
+                </p>
+              ) : (
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  {allTags.map(tag => {
+                    const isSelected = editBookTags.some(t => t.id === tag.id)
+                    return (
+                      <button
+                        key={tag.id}
+                        type="button"
+                        onClick={() => toggleBookTag(tag.id)}
+                        style={{
+                          padding: '6px 14px',
+                          border: isSelected ? 'none' : '2px solid #e2e8f0',
+                          borderRadius: '20px',
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                          background: isSelected ? tag.color : 'white',
+                          color: isSelected ? 'white' : '#333',
+                          transition: 'all 0.2s'
+                        }}
+                      >
+                        {isSelected ? '✓ ' : ''}{tag.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              )}
             </div>
             
             <div className="buttons">
