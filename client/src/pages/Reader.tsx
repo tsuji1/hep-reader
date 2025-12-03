@@ -774,7 +774,17 @@ function Reader(): JSX.Element {
       {showAiChat ? (
         <AiChat 
           context={getCurrentPageContext()}
-          onClose={() => setShowAiChat(false)} 
+          onClose={() => setShowAiChat(false)}
+          aiContext={book.ai_context || ''}
+          onAiContextChange={async (newContext) => {
+            try {
+              await axios.patch(`/api/books/${bookId}`, { ai_context: newContext })
+              setBook(prev => prev ? { ...prev, ai_context: newContext } : prev)
+            } catch (error) {
+              console.error('Failed to update AI context:', error)
+              alert('保存に失敗しました')
+            }
+          }}
         />
       ) : (
         <button 

@@ -15,6 +15,8 @@ interface Message {
 interface AiChatProps {
   context?: string
   onClose: () => void
+  aiContext?: string
+  onAiContextChange?: (context: string) => void
 }
 
 const providerLabels: Record<string, string> = {
@@ -23,12 +25,14 @@ const providerLabels: Record<string, string> = {
   openai: 'GPT'
 }
 
-function AiChat({ context, onClose }: AiChatProps): JSX.Element {
+function AiChat({ context, onClose, aiContext, onAiContextChange }: AiChatProps): JSX.Element {
   const [settings, setSettings] = useState<AiSettingDisplay[]>([])
   const [selectedProvider, setSelectedProvider] = useState<string>('')
   const [messages, setMessages] = useState<Message[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [showContextEdit, setShowContextEdit] = useState(false)
+  const [editingContext, setEditingContext] = useState(aiContext || '')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -95,6 +99,67 @@ function AiChat({ context, onClose }: AiChatProps): JSX.Element {
         <h3>🤖 AIアシスタント</h3>
         <button className="close-btn" onClick={onClose}>✕</button>
       </div>
+
+      {/* AI事前説明編集ボタン */}
+      {onAiContextChange && (
+        <div style={{ padding: '8px 12px', borderBottom: '1px solid #e2e8f0' }}>
+          <button
+            onClick={() => {
+              setEditingContext(aiContext || '')
+              setShowContextEdit(!showContextEdit)
+            }}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#667eea',
+              cursor: 'pointer',
+              fontSize: '0.85rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            {showContextEdit ? '▼' : '▶'} 📝 事前説明を編集 {aiContext ? '(設定済み)' : ''}
+          </button>
+          {showContextEdit && (
+            <div style={{ marginTop: '8px' }}>
+              <textarea
+                value={editingContext}
+                onChange={e => setEditingContext(e.target.value)}
+                placeholder="この本についてAIに伝えたい事前情報を入力...&#10;例: これは2020年に発売されたプログラミング入門書です。"
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '8px',
+                  fontSize: '0.85rem',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  resize: 'vertical',
+                  boxSizing: 'border-box'
+                }}
+              />
+              <button
+                onClick={() => {
+                  onAiContextChange(editingContext)
+                  setShowContextEdit(false)
+                }}
+                style={{
+                  marginTop: '6px',
+                  padding: '6px 12px',
+                  background: '#667eea',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '0.8rem'
+                }}
+              >
+                保存
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {!hasConfiguredProvider ? (
         <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
