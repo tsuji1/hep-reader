@@ -396,6 +396,23 @@ function Reader(): JSX.Element {
             </button>
           </div>
           <h2 style={{ marginTop: '10px', fontSize: '1rem', lineHeight: '1.4' }}>{book.title}</h2>
+          {book.source_url && (
+            <a 
+              href={book.source_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-block',
+                marginTop: '8px',
+                color: '#667eea',
+                fontSize: '0.8rem',
+                textDecoration: 'none',
+                wordBreak: 'break-all'
+              }}
+            >
+              🔗 元の記事を開く
+            </a>
+          )}
           {isPdf && (
             <a 
               href={`/api/books/${bookId}/pdf`} 
