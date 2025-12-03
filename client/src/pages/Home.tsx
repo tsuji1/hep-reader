@@ -22,7 +22,7 @@ function Home(): JSX.Element {
   const [savingUrl, setSavingUrl] = useState<boolean>(false)
   // タグ機能
   const [allTags, setAllTags] = useState<Tag[]>([])
-  const [selectedTagFilter, setSelectedTagFilter] = useState<string | null>(null)
+  const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([])
   const [bookTags, setBookTags] = useState<Record<string, Tag[]>>({})
   const [newTagName, setNewTagName] = useState<string>('')
   const [newTagColor, setNewTagColor] = useState<string>('#667eea')
@@ -179,9 +179,11 @@ function Home(): JSX.Element {
     }
   })
 
-  // Filter by tag
-  const filteredBooks = selectedTagFilter
-    ? sortedBooks.filter(book => bookTags[book.id]?.some(t => t.id === selectedTagFilter))
+  // Filter by tags (AND condition)
+  const filteredBooks = selectedTagFilters.length > 0
+    ? sortedBooks.filter(book => 
+        selectedTagFilters.every(tagId => bookTags[book.id]?.some(t => t.id === tagId))
+      )
     : sortedBooks
 
   // Open book
@@ -259,33 +261,33 @@ function Home(): JSX.Element {
     }
   }
 
-  // 積読タグに追加（現在表示中の本すべて）
-  const addToTsundoku = async (): Promise<void> => {
+  // 個別の本を積読タグに追加
+  const addToTsundoku = async (e: MouseEvent, bookId: string): Promise<void> => {
+    e.stopPropagation()
     const tsundokuTag = allTags.find(t => t.name === '積読')
     if (!tsundokuTag) {
       alert('積読タグが見つかりません。ページを再読み込みしてください。')
       return
     }
     
-    // フィルタリングされた本のうち、まだ積読タグがついていないものを追加
-    const booksToAdd = filteredBooks.filter(
-      book => !bookTags[book.id]?.some(t => t.id === tsundokuTag.id)
-    )
-    
-    if (booksToAdd.length === 0) {
-      alert('表示中のすべての本はすでに積読に追加されています')
-      return
-    }
+    // すでに積読タグがついている場合は削除
+    const hasTsundoku = bookTags[bookId]?.some(t => t.id === tsundokuTag.id)
     
     try {
-      for (const book of booksToAdd) {
-        await axios.post(`/api/books/${book.id}/tags`, { tagId: tsundokuTag.id })
+      if (hasTsundoku) {
+        await axios.delete(`/api/books/${bookId}/tags/${tsundokuTag.id}`)
+      } else {
+        await axios.post(`/api/books/${bookId}/tags`, { tagId: tsundokuTag.id })
       }
-      alert(`${booksToAdd.length}冊を積読に追加しました`)
-      fetchBooks()
+      // bookTagsを更新
+      setBookTags(prev => ({
+        ...prev,
+        [bookId]: hasTsundoku
+          ? prev[bookId].filter(t => t.id !== tsundokuTag.id)
+          : [...(prev[bookId] || []), tsundokuTag]
+      }))
     } catch (error) {
-      console.error('Failed to add to tsundoku:', error)
-      alert('積読への追加に失敗しました')
+      console.error('Failed to toggle tsundoku:', error)
     }
   }
 
@@ -369,19 +371,9 @@ function Home(): JSX.Element {
           <Link to="/">
             <h1>📚 EPUB Viewer</h1>
           </Link>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button
-              className="settings-link"
-              title="表示中の本を積読に追加"
-              onClick={addToTsundoku}
-              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem' }}
-            >
-              📖
-            </button>
-            <Link to="/settings" className="settings-link" title="設定">
-              ⚙️
-            </Link>
-          </div>
+          <Link to="/settings" className="settings-link" title="設定">
+            ⚙️
+          </Link>
         </div>
       </header>
 
@@ -474,42 +466,53 @@ function Home(): JSX.Element {
             </div>
           </div>
 
-          {/* タグフィルタ */}
+          {/* タグフィルタ (AND検索: 複数選択可能) */}
           {allTags.length > 0 && (
             <div style={{ marginBottom: '20px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
               <span style={{ color: '#666', fontSize: '0.9rem' }}>タグで絞り込み:</span>
               <button
-                onClick={() => setSelectedTagFilter(null)}
-                className={`tag-filter-btn ${selectedTagFilter === null ? 'active' : ''}`}
+                onClick={() => setSelectedTagFilters([])}
                 style={{
                   padding: '4px 12px',
                   border: 'none',
                   borderRadius: '20px',
                   cursor: 'pointer',
                   fontSize: '0.85rem',
-                  background: selectedTagFilter === null ? '#667eea' : '#e2e8f0',
-                  color: selectedTagFilter === null ? 'white' : '#333'
+                  background: selectedTagFilters.length === 0 ? '#667eea' : '#e2e8f0',
+                  color: selectedTagFilters.length === 0 ? 'white' : '#333'
                 }}
               >
                 すべて
               </button>
-              {allTags.map(tag => (
-                <button
-                  key={tag.id}
-                  onClick={() => setSelectedTagFilter(selectedTagFilter === tag.id ? null : tag.id)}
-                  style={{
-                    padding: '4px 12px',
-                    border: 'none',
-                    borderRadius: '20px',
-                    cursor: 'pointer',
-                    fontSize: '0.85rem',
-                    background: selectedTagFilter === tag.id ? tag.color : '#e2e8f0',
-                    color: selectedTagFilter === tag.id ? 'white' : '#333'
-                  }}
-                >
-                  {tag.name}
-                </button>
-              ))}
+              {allTags.map(tag => {
+                const isSelected = selectedTagFilters.includes(tag.id)
+                return (
+                  <button
+                    key={tag.id}
+                    onClick={() => setSelectedTagFilters(prev => 
+                      isSelected 
+                        ? prev.filter(id => id !== tag.id)
+                        : [...prev, tag.id]
+                    )}
+                    style={{
+                      padding: '4px 12px',
+                      border: isSelected ? '2px solid ' + tag.color : 'none',
+                      borderRadius: '20px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem',
+                      background: isSelected ? tag.color : '#e2e8f0',
+                      color: isSelected ? 'white' : '#333'
+                    }}
+                  >
+                    {isSelected && '✓ '}{tag.name}
+                  </button>
+                )
+              })}
+              {selectedTagFilters.length > 1 && (
+                <span style={{ color: '#666', fontSize: '0.8rem', marginLeft: '8px' }}>
+                  (AND検索: {selectedTagFilters.length}個のタグ)
+                </span>
+              )}
             </div>
           )}
           
@@ -523,12 +526,38 @@ function Home(): JSX.Element {
             </div>
           ) : (
             <div className="book-list">
-              {filteredBooks.map((book) => (
+              {filteredBooks.map((book) => {
+                const hasTsundoku = bookTags[book.id]?.some(t => t.name === '積読')
+                return (
                 <div
                   key={book.id}
                   className="book-card"
                   onClick={() => openBook(book)}
                 >
+                  <button
+                    className="tsundoku-btn"
+                    onClick={(e) => addToTsundoku(e, book.id)}
+                    title={hasTsundoku ? '積読から削除' : '積読に追加'}
+                    style={{
+                      position: 'absolute',
+                      top: '8px',
+                      left: '8px',
+                      zIndex: 10,
+                      background: hasTsundoku ? '#f59e0b' : 'rgba(255,255,255,0.9)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '28px',
+                      height: '28px',
+                      cursor: 'pointer',
+                      fontSize: '0.9rem',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                    }}
+                  >
+                    {hasTsundoku ? '✓' : '📖'}
+                  </button>
                   <button
                     className="edit-btn"
                     onClick={(e) => openEditModal(e, book)}
@@ -612,7 +641,7 @@ function Home(): JSX.Element {
                     </div>
                   </div>
                 </div>
-              ))}
+              )})}
             </div>
           )}
         </section>
