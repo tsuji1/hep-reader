@@ -40,6 +40,9 @@ function Reader(): JSX.Element {
   const [clipPosition, setClipPosition] = useState<ClipPosition | null>(null)
   const [generatingDescription, setGeneratingDescription] = useState<boolean>(false)
   
+  // PDFズーム
+  const [pdfScale, setPdfScale] = useState<number>(1.5)
+  
   const contentRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const isScrollingToPage = useRef<boolean>(false)
@@ -596,6 +599,28 @@ function Reader(): JSX.Element {
               </button>
             )}
             
+            {isPdf && (
+              <div className="pdf-zoom-controls">
+                <button
+                  onClick={() => setPdfScale(s => Math.max(0.5, s - 0.25))}
+                  title="縮小"
+                >
+                  −
+                </button>
+                <span>{Math.round(pdfScale * 100)}%</span>
+                <button
+                  onClick={() => setPdfScale(s => Math.min(3, s + 0.25))}
+                  title="拡大"
+                >
+                  +
+                </button>
+              </div>
+            )}
+            
+            {clipMode && (
+              <span className="clip-mode-indicator">📷 ドラッグで選択</span>
+            )}
+            
             <div className="view-mode-toggle">
               <button
                 className={viewMode === 'scroll' ? 'active' : ''}
@@ -657,6 +682,7 @@ function Reader(): JSX.Element {
               onClipCapture={handleClipCapture}
               clips={clips}
               onClipClick={openClipInNewWindow}
+              scale={pdfScale}
             />
           ) : viewMode === 'scroll' ? (
             <div className="content-continuous">

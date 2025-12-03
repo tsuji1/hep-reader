@@ -353,13 +353,13 @@ interface PdfViewerProps {
   onClipCapture?: (pageNum: number, imageData: string, position: ClipPosition) => void
   clips?: Clip[]
   onClipClick?: (clip: Clip) => void
+  scale: number
 }
 
-function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPageTextExtracted, viewMode, clipMode, onClipCapture, clips, onClipClick }: PdfViewerProps): JSX.Element {
+function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPageTextExtracted, viewMode, clipMode, onClipCapture, clips, onClipClick, scale }: PdfViewerProps): JSX.Element {
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [totalPages, setTotalPages] = useState<number>(0)
   const [loading, setLoading] = useState<boolean>(true)
-  const [scale, setScale] = useState<number>(1.5)
   const [visiblePages, setVisiblePages] = useState<Record<number, boolean>>({})
   const containerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
@@ -589,9 +589,6 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
     }
   }, [currentPage, viewMode, scrollToPage])
 
-  const handleZoomIn = (): void => setScale(s => Math.min(3, s + 0.25))
-  const handleZoomOut = (): void => setScale(s => Math.max(0.5, s - 0.25))
-
   if (loading) {
     return <div className="loading">PDF読み込み中...</div>
   }
@@ -602,16 +599,6 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
 
   return (
     <div className="pdf-viewer-container" ref={containerRef}>
-      {/* ズームコントロール */}
-      <div className="pdf-controls">
-        <button onClick={handleZoomOut} title="縮小">−</button>
-        <span>{Math.round(scale * 100)}%</span>
-        <button onClick={handleZoomIn} title="拡大">+</button>
-        {clipMode && (
-          <span className="clip-mode-indicator">📷 クリップモード: ドラッグで範囲選択</span>
-        )}
-      </div>
-
       {viewMode === 'scroll' ? (
         <div className="pdf-pages-scroll">
           {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
