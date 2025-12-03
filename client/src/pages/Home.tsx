@@ -15,6 +15,7 @@ function Home(): JSX.Element {
   const [editingBook, setEditingBook] = useState<Book | null>(null)
   const [editTitle, setEditTitle] = useState<string>('')
   const [editLanguage, setEditLanguage] = useState<string>('en')
+  const [editAiContext, setEditAiContext] = useState<string>('')
   const [coverPreview, setCoverPreview] = useState<string | null>(null)
   const [coverFile, setCoverFile] = useState<File | null>(null)
   const [uploadingCover, setUploadingCover] = useState<boolean>(false)
@@ -201,6 +202,7 @@ function Home(): JSX.Element {
     setEditingBook(book)
     setEditTitle(book.title)
     setEditLanguage(book.language || 'en')
+    setEditAiContext(book.ai_context || '')
     setCoverPreview(null)
     setCoverFile(null)
     // 本のタグを読み込み
@@ -350,7 +352,8 @@ function Home(): JSX.Element {
       // Update book info
       await axios.patch(`/api/books/${editingBook.id}`, {
         title: editTitle,
-        language: editLanguage
+        language: editLanguage,
+        ai_context: editAiContext
       })
       fetchBooks()
       setEditingBook(null)
@@ -540,16 +543,16 @@ function Home(): JSX.Element {
                     title={hasTsundoku ? '積読から削除' : '積読に追加'}
                     style={{
                       position: 'absolute',
-                      top: '8px',
-                      left: '8px',
+                      bottom: '8px',
+                      right: '8px',
                       zIndex: 10,
                       background: hasTsundoku ? '#f59e0b' : 'rgba(255,255,255,0.9)',
                       border: 'none',
                       borderRadius: '50%',
-                      width: '28px',
-                      height: '28px',
+                      width: '32px',
+                      height: '32px',
                       cursor: 'pointer',
-                      fontSize: '0.9rem',
+                      fontSize: '1rem',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -874,6 +877,30 @@ function Home(): JSX.Element {
               </select>
               <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '5px' }}>
                 ※ 自動翻訳機能で使用されます
+              </p>
+            </div>
+
+            {/* AI用事前説明 */}
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                🤖 AI用事前説明
+              </label>
+              <textarea
+                value={editAiContext}
+                onChange={(e) => setEditAiContext(e.target.value)}
+                placeholder="この本についてAIに伝えておきたい情報を入力してください（例：セキュリティの技術書、著者は○○、主にクラウドセキュリティについて書かれている等）"
+                rows={3}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '0.9rem',
+                  resize: 'vertical'
+                }}
+              />
+              <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '5px' }}>
+                ※ AIに質問する際にこの説明が毎回送信されます
               </p>
             </div>
 

@@ -104,6 +104,13 @@ try {
   // Column already exists
 }
 
+// Migration: Add ai_context column for book-specific AI context
+try {
+  db.exec(`ALTER TABLE books ADD COLUMN ai_context TEXT`);
+} catch (e) {
+  // Column already exists
+}
+
 // Tags table
 db.exec(`
   CREATE TABLE IF NOT EXISTS tags (
@@ -201,7 +208,7 @@ export function deleteBook(id: string): void {
   stmt.run(id);
 }
 
-export function updateBook(id: string, { title, language }: BookInput): Book | null {
+export function updateBook(id: string, { title, language, ai_context }: BookInput): Book | null {
   const updates: string[] = [];
   const values: (string | undefined)[] = [];
   
@@ -212,6 +219,10 @@ export function updateBook(id: string, { title, language }: BookInput): Book | n
   if (language !== undefined) {
     updates.push('language = ?');
     values.push(language);
+  }
+  if (ai_context !== undefined) {
+    updates.push('ai_context = ?');
+    values.push(ai_context);
   }
   
   if (updates.length === 0) return null;

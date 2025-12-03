@@ -1126,9 +1126,9 @@ app.delete('/api/books/:bookId', (req: Request, res: Response) => {
 app.patch('/api/books/:bookId', (req: Request, res: Response) => {
   try {
     const { bookId } = req.params;
-    const { title, language } = req.body;
+    const { title, language, ai_context } = req.body;
     
-    const updated = db.updateBook(bookId, { title, language });
+    const updated = db.updateBook(bookId, { title, language, ai_context });
     if (!updated) {
       return res.status(404).json({ error: 'Book not found' });
     }

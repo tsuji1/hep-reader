@@ -9,6 +9,7 @@ export interface Book {
   language: string
   book_type?: 'epub' | 'pdf' | 'website'
   source_url?: string
+  ai_context?: string
   current_page?: number
   created_at: string
   updated_at: string

@@ -325,30 +325,51 @@ function Reader(): JSX.Element {
     return fixEpubImagePaths(content, bookId || '')
   }
 
-  // 現在のページのコンテンツをAIのコンテキストとして取得
+  // 現在のページのコンテンツをAIのコンテキストとして取得（前後2ページ含む）
   const getCurrentPageContext = (): string => {
+    // 事前説明があれば追加
+    const preContext = book?.ai_context 
+      ? `\n【この本についての事前情報】\n${book.ai_context}\n\n` 
+      : ''
+    
     if (isPdf) {
-      return `PDF文書「${book?.title}」の${currentPage}ページ目を閲覧中です。`
+      return `${preContext}PDF文書「${book?.title}」の${currentPage}ページ目を閲覧中です。`
     }
     
-    const currentPageData = pages[currentPage - 1]
-    if (!currentPageData) return ''
+    // 現在ページ ± 2ページ分のコンテンツを取得
+    const pageRange = [-2, -1, 0, 1, 2]
+    const contextPages: string[] = []
     
-    // HTMLタグを除去してテキストのみ抽出
-    const textContent = currentPageData.content
-      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    for (const offset of pageRange) {
+      const pageIndex = currentPage - 1 + offset
+      if (pageIndex >= 0 && pageIndex < pages.length) {
+        const pageData = pages[pageIndex]
+        if (pageData) {
+          // HTMLタグを除去してテキストのみ抽出
+          const textContent = pageData.content
+            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+          
+          if (textContent) {
+            const label = offset === 0 ? '【現在のページ】' : `【${offset > 0 ? '+' : ''}${offset}ページ】`
+            contextPages.push(`${label} (p.${pageIndex + 1})\n${textContent}`)
+          }
+        }
+      }
+    }
     
-    // 長すぎる場合は先頭を切り取り
-    const maxLength = 3000
-    const truncated = textContent.length > maxLength 
-      ? textContent.slice(0, maxLength) + '...'
-      : textContent
+    const allContent = contextPages.join('\n\n---\n\n')
     
-    return `本のタイトル: ${book?.title}\nページ ${currentPage} / ${totalPages}\n\n内容:\n${truncated}`
+    // 長すぎる場合は切り取り
+    const maxLength = 6000
+    const truncated = allContent.length > maxLength 
+      ? allContent.slice(0, maxLength) + '...'
+      : allContent
+    
+    return `${preContext}本のタイトル: ${book?.title}\n現在のページ: ${currentPage} / ${totalPages}\n\n${truncated}`
   }
 
   if (!book) {
