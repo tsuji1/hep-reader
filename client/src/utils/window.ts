@@ -5,7 +5,7 @@ import type { Clip, ImageInfo } from '../types'
  * EPUBの画像やPDFのクリップ画像を別ウィンドウで表示する共通関数
  */
 export function openImageInNewWindow(image: ImageInfo): void {
-  const newWindow = window.open('', '_blank', 'width=800,height=600,resizable=yes,scrollbars=yes')
+  const newWindow = window.open('', '_blank', 'width=900,height=700,resizable=yes,scrollbars=yes')
   if (!newWindow) {
     alert('ポップアップがブロックされました。ポップアップを許可してください。')
     return
@@ -21,43 +21,135 @@ export function openImageInNewWindow(image: ImageInfo): void {
       <title>${title}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
+        html, body {
+          width: 100%;
+          height: 100%;
+          overflow: auto;
           background: #1a1a2e;
-          min-height: 100vh;
+        }
+        body {
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: center;
-          padding: 20px;
+          justify-content: flex-start;
+          padding: 10px;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
+        .controls {
+          position: fixed;
+          top: 10px;
+          right: 10px;
+          display: flex;
+          gap: 5px;
+          z-index: 100;
+          background: rgba(0,0,0,0.5);
+          padding: 5px;
+          border-radius: 5px;
+        }
+        .controls button {
+          background: rgba(255,255,255,0.9);
+          border: none;
+          color: #333;
+          width: 32px;
+          height: 32px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 18px;
+          font-weight: bold;
+        }
+        .controls button:hover {
+          background: #fff;
+        }
+        .controls span {
+          color: white;
+          line-height: 32px;
+          padding: 0 8px;
+          font-size: 14px;
+        }
         .image-container {
-          max-width: 100%;
-          max-height: calc(100vh - 80px);
           display: flex;
           align-items: center;
           justify-content: center;
+          min-height: calc(100vh - 60px);
+          width: 100%;
         }
         img {
-          max-width: 100%;
-          max-height: calc(100vh - 80px);
-          object-fit: contain;
-          border-radius: 8px;
-          box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+          display: block;
+          border-radius: 4px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+          transform-origin: center center;
         }
         .page-info {
           color: #fff;
-          margin-top: 15px;
+          padding: 10px;
           font-size: 14px;
           opacity: 0.8;
+          text-align: center;
         }
       </style>
     </head>
     <body>
+      <div class="controls">
+        <button onclick="zoomOut()">−</button>
+        <span id="zoom-level">100%</span>
+        <button onclick="zoomIn()">+</button>
+        <button onclick="resetZoom()">↺</button>
+      </div>
       <div class="image-container">
-        <img src="${image.src}" alt="${title}" />
+        <img id="main-img" src="${image.src}" alt="${title}" />
       </div>
       ${pageInfo}
+      <script>
+        const img = document.getElementById('main-img');
+        const zoomDisplay = document.getElementById('zoom-level');
+        let scale = 1;
+        let naturalW, naturalH;
+        
+        img.onload = function() {
+          naturalW = img.naturalWidth;
+          naturalH = img.naturalHeight;
+          fitToWindow();
+        };
+        
+        function fitToWindow() {
+          const maxW = window.innerWidth - 40;
+          const maxH = window.innerHeight - 80;
+          const ratioW = maxW / naturalW;
+          const ratioH = maxH / naturalH;
+          scale = Math.min(ratioW, ratioH, 1);
+          applyScale();
+        }
+        
+        function applyScale() {
+          img.style.width = (naturalW * scale) + 'px';
+          img.style.height = (naturalH * scale) + 'px';
+          zoomDisplay.textContent = Math.round(scale * 100) + '%';
+        }
+        
+        function zoomIn() {
+          scale = Math.min(5, scale + 0.25);
+          applyScale();
+        }
+        
+        function zoomOut() {
+          scale = Math.max(0.1, scale - 0.25);
+          applyScale();
+        }
+        
+        function resetZoom() {
+          fitToWindow();
+        }
+        
+        window.addEventListener('resize', fitToWindow);
+        
+        document.addEventListener('wheel', function(e) {
+          if (e.ctrlKey) {
+            e.preventDefault();
+            if (e.deltaY < 0) zoomIn();
+            else zoomOut();
+          }
+        }, { passive: false });
+      </script>
     </body>
     </html>
   `)
@@ -69,7 +161,7 @@ export function openImageInNewWindow(image: ImageInfo): void {
  * PDFのクリップ用の専用関数
  */
 export function openClipInNewWindow(clip: Clip): void {
-  const newWindow = window.open('', '_blank', 'width=600,height=500,resizable=yes,scrollbars=yes')
+  const newWindow = window.open('', '_blank', 'width=700,height=600,resizable=yes,scrollbars=yes')
   if (!newWindow) {
     alert('ポップアップがブロックされました。ポップアップを許可してください。')
     return
@@ -82,25 +174,66 @@ export function openClipInNewWindow(clip: Clip): void {
       <title>${clip.note || 'クリップ画像'} - p.${clip.page_num}</title>
       <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
+        html, body {
+          width: 100%;
+          height: 100%;
+          overflow: auto;
           background: #1a1a2e;
-          min-height: 100vh;
+        }
+        body {
           display: flex;
           flex-direction: column;
           align-items: center;
-          justify-content: center;
-          padding: 20px;
+          justify-content: flex-start;
+          padding: 10px;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
+        .controls {
+          position: fixed;
+          top: 10px;
+          right: 10px;
+          display: flex;
+          gap: 5px;
+          z-index: 100;
+          background: rgba(0,0,0,0.5);
+          padding: 5px;
+          border-radius: 5px;
+        }
+        .controls button {
+          background: rgba(255,255,255,0.9);
+          border: none;
+          color: #333;
+          width: 32px;
+          height: 32px;
+          border-radius: 4px;
+          cursor: pointer;
+          font-size: 18px;
+          font-weight: bold;
+        }
+        .controls button:hover {
+          background: #fff;
+        }
+        .controls span {
+          color: white;
+          line-height: 32px;
+          padding: 0 8px;
+          font-size: 14px;
+        }
+        .image-container {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: calc(100vh - 80px);
+          width: 100%;
+        }
         img {
-          max-width: 100%;
-          height: auto;
-          border-radius: 8px;
+          display: block;
+          border-radius: 4px;
           box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
         .info {
           color: #fff;
-          margin-top: 15px;
+          padding: 10px;
           text-align: center;
         }
         .note {
@@ -111,11 +244,70 @@ export function openClipInNewWindow(clip: Clip): void {
       </style>
     </head>
     <body>
-      <img src="${clip.image_data}" alt="クリップ画像" />
+      <div class="controls">
+        <button onclick="zoomOut()">−</button>
+        <span id="zoom-level">100%</span>
+        <button onclick="zoomIn()">+</button>
+        <button onclick="resetZoom()">↺</button>
+      </div>
+      <div class="image-container">
+        <img id="main-img" src="${clip.image_data}" alt="クリップ画像" />
+      </div>
       <div class="info">
         <strong>ページ ${clip.page_num}</strong>
         ${clip.note ? `<div class="note">${clip.note}</div>` : ''}
       </div>
+      <script>
+        const img = document.getElementById('main-img');
+        const zoomDisplay = document.getElementById('zoom-level');
+        let scale = 1;
+        let naturalW, naturalH;
+        
+        img.onload = function() {
+          naturalW = img.naturalWidth;
+          naturalH = img.naturalHeight;
+          fitToWindow();
+        };
+        
+        function fitToWindow() {
+          const maxW = window.innerWidth - 40;
+          const maxH = window.innerHeight - 100;
+          const ratioW = maxW / naturalW;
+          const ratioH = maxH / naturalH;
+          scale = Math.min(ratioW, ratioH, 1);
+          applyScale();
+        }
+        
+        function applyScale() {
+          img.style.width = (naturalW * scale) + 'px';
+          img.style.height = (naturalH * scale) + 'px';
+          zoomDisplay.textContent = Math.round(scale * 100) + '%';
+        }
+        
+        function zoomIn() {
+          scale = Math.min(5, scale + 0.25);
+          applyScale();
+        }
+        
+        function zoomOut() {
+          scale = Math.max(0.1, scale - 0.25);
+          applyScale();
+        }
+        
+        function resetZoom() {
+          fitToWindow();
+        }
+        
+        window.addEventListener('resize', fitToWindow);
+        
+        document.addEventListener('wheel', function(e) {
+          if (e.ctrlKey) {
+            e.preventDefault();
+            if (e.deltaY < 0) zoomIn();
+            else zoomOut();
+          }
+        }, { passive: false });
+      </script>
     </body>
     </html>
   `)
