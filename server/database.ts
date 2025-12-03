@@ -124,6 +124,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag_id);
 `);
 
+// Initialize default "積読" tag
+try {
+  const existingTag = db.prepare('SELECT id FROM tags WHERE name = ?').get('積読');
+  if (!existingTag) {
+    const { v4: uuidv4Init } = require('uuid');
+    db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(uuidv4Init(), '積読', '#f59e0b');
+  }
+} catch (e) {
+  // Tag already exists
+}
+
 // AI Settings table
 db.exec(`
   CREATE TABLE IF NOT EXISTS ai_settings (

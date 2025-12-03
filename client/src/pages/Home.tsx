@@ -259,6 +259,36 @@ function Home(): JSX.Element {
     }
   }
 
+  // 積読タグに追加（現在表示中の本すべて）
+  const addToTsundoku = async (): Promise<void> => {
+    const tsundokuTag = allTags.find(t => t.name === '積読')
+    if (!tsundokuTag) {
+      alert('積読タグが見つかりません。ページを再読み込みしてください。')
+      return
+    }
+    
+    // フィルタリングされた本のうち、まだ積読タグがついていないものを追加
+    const booksToAdd = filteredBooks.filter(
+      book => !bookTags[book.id]?.some(t => t.id === tsundokuTag.id)
+    )
+    
+    if (booksToAdd.length === 0) {
+      alert('表示中のすべての本はすでに積読に追加されています')
+      return
+    }
+    
+    try {
+      for (const book of booksToAdd) {
+        await axios.post(`/api/books/${book.id}/tags`, { tagId: tsundokuTag.id })
+      }
+      alert(`${booksToAdd.length}冊を積読に追加しました`)
+      fetchBooks()
+    } catch (error) {
+      console.error('Failed to add to tsundoku:', error)
+      alert('積読への追加に失敗しました')
+    }
+  }
+
   // Progress calculation helper
   const getProgress = (book: Book): number => {
     if (book.book_type === 'pdf') {
@@ -339,6 +369,14 @@ function Home(): JSX.Element {
           <Link to="/">
             <h1>📚 EPUB Viewer</h1>
           </Link>
+          <button
+            className="settings-link"
+            title="選択した本を積読に追加"
+            onClick={addToTsundoku}
+            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            📚
+          </button>
           <Link to="/settings" className="settings-link" title="設定">
             ⚙️
           </Link>
