@@ -335,9 +335,12 @@ function Home(): JSX.Element {
   return (
     <div>
       <header className="header">
-        <div className="container">
+        <div className="container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <Link to="/">
             <h1>📚 EPUB Viewer</h1>
+          </Link>
+          <Link to="/settings" className="settings-link" title="設定">
+            ⚙️
           </Link>
         </div>
       </header>

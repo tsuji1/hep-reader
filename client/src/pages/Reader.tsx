@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import AiChat from '../components/AiChat'
 import PdfViewer from '../components/PdfViewer'
 import type { Book, Bookmark, Clip, ClipPosition, PageContent, TocItem } from '../types'
 import { fixEpubImagePaths, openClipInNewWindow, openImageInNewWindow } from '../utils/window'
@@ -27,6 +28,7 @@ function Reader(): JSX.Element {
   const [viewMode, setViewMode] = useState<ViewMode>('scroll')
   const [isPdf, setIsPdf] = useState<boolean>(false)
   const [pdfTotalPages, setPdfTotalPages] = useState<number>(0)
+  const [showAiChat, setShowAiChat] = useState<boolean>(false)
   
   // クリップ機能
   const [clipMode, setClipMode] = useState<boolean>(false)
@@ -299,6 +301,32 @@ function Reader(): JSX.Element {
   // Fix image paths in content
   const fixContent = (content: string): string => {
     return fixEpubImagePaths(content, bookId || '')
+  }
+
+  // 現在のページのコンテンツをAIのコンテキストとして取得
+  const getCurrentPageContext = (): string => {
+    if (isPdf) {
+      return `PDF文書「${book?.title}」の${currentPage}ページ目を閲覧中です。`
+    }
+    
+    const currentPageData = pages[currentPage - 1]
+    if (!currentPageData) return ''
+    
+    // HTMLタグを除去してテキストのみ抽出
+    const textContent = currentPageData.content
+      .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+      .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+    
+    // 長すぎる場合は先頭を切り取り
+    const maxLength = 3000
+    const truncated = textContent.length > maxLength 
+      ? textContent.slice(0, maxLength) + '...'
+      : textContent
+    
+    return `本のタイトル: ${book?.title}\nページ ${currentPage} / ${totalPages}\n\n内容:\n${truncated}`
   }
 
   if (!book) {
@@ -678,6 +706,22 @@ function Reader(): JSX.Element {
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI Chat */}
+      {showAiChat ? (
+        <AiChat 
+          context={getCurrentPageContext()}
+          onClose={() => setShowAiChat(false)} 
+        />
+      ) : (
+        <button 
+          className="ai-chat-toggle"
+          onClick={() => setShowAiChat(true)}
+          title="AIに質問"
+        >
+          🤖
+        </button>
       )}
     </div>
   )

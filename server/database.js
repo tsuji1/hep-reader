@@ -87,6 +87,17 @@ try {
   // Columns already exist
 }
 
+// Create AI settings table for API keys
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ai_settings (
+    provider TEXT PRIMARY KEY,
+    api_key TEXT NOT NULL,
+    model TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 module.exports = {
   // Books
   addBook(id, title, originalFilename, totalPages, bookType = 'epub') {
@@ -223,5 +234,34 @@ module.exports = {
   deleteClip(id) {
     const stmt = db.prepare('DELETE FROM clips WHERE id = ?');
     stmt.run(id);
+  },
+
+  // AI Settings
+  getAiSettings() {
+    const stmt = db.prepare('SELECT provider, api_key, model FROM ai_settings');
+    return stmt.all();
+  },
+
+  getAiSetting(provider) {
+    const stmt = db.prepare('SELECT provider, api_key, model FROM ai_settings WHERE provider = ?');
+    return stmt.get(provider);
+  },
+
+  saveAiSetting(provider, apiKey, model = null) {
+    const stmt = db.prepare(`
+      INSERT INTO ai_settings (provider, api_key, model, updated_at)
+      VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(provider) DO UPDATE SET
+        api_key = excluded.api_key,
+        model = excluded.model,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+    stmt.run(provider, apiKey, model);
+    return { provider, model };
+  },
+
+  deleteAiSetting(provider) {
+    const stmt = db.prepare('DELETE FROM ai_settings WHERE provider = ?');
+    stmt.run(provider);
   }
 };
