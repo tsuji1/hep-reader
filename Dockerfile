@@ -7,6 +7,15 @@ RUN npm install
 COPY client/ ./
 RUN npm run build
 
+# Build stage for TypeScript server
+FROM node:iron-trixie-slim AS server-builder
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY server/ ./server/
+RUN npm run build:server
+
 # Production stage
 
 FROM node:20.19.6
@@ -22,9 +31,9 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Copy server files
+# Copy server files (compiled JS)
 COPY package*.json ./
-COPY server/ ./server/
+COPY --from=server-builder /app/server/dist ./server/dist/
 
 # Install server dependencies only
 RUN npm install --omit=dev
@@ -41,4 +50,4 @@ EXPOSE 10300
 ENV PORT=10300
 ENV NODE_ENV=production
 
-CMD ["node", "server/index.js"]
+CMD ["node", "server/dist/index.js"]

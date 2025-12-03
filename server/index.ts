@@ -1,22 +1,23 @@
-const express = require('express');
-const cors = require('cors');
-const multer = require('multer');
-const path = require('path');
-const fs = require('fs');
-const { execSync } = require('child_process');
-const { v4: uuidv4 } = require('uuid');
-const db = require('./database');
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
+import multer, { FileFilterCallback } from 'multer';
+import path from 'path';
+import fs from 'fs';
+import { execSync } from 'child_process';
+import { v4 as uuidv4 } from 'uuid';
+import db from './database';
+import type { PagesInfo, TocItem, ClipPosition } from './types';
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
 // ファイル名のデコードユーティリティ
 // multerはlatin1でエンコードするため、UTF-8にデコード
-function decodeFilename(filename) {
+function decodeFilename(filename: string): string {
   try {
-    return Buffer.from(filename, 'latin1').toString('utf8')
+    return Buffer.from(filename, 'latin1').toString('utf8');
   } catch (e) {
-    return filename
+    return filename;
   }
 }
 
@@ -40,10 +41,10 @@ if (!fs.existsSync(convertedDir)) fs.mkdirSync(convertedDir, { recursive: true }
 
 // Multer configuration for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (_req, _file, cb) => {
     cb(null, uploadsDir);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueName = `${uuidv4()}-${file.originalname}`;
     cb(null, uniqueName);
   }
@@ -51,7 +52,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (ext === '.epub' || ext === '.pdf') {
       cb(null, true);
@@ -61,104 +62,8 @@ const upload = multer({
   }
 });
 
-// Upload and convert EPUB to HTML, or store PDF
-app.post('/api/upload', upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const filePath = req.file.path;
-    // ファイル名をUTF-8にデコード（multerはlatin1でエンコードする）
-    const originalFilename = decodeFilename(req.file.originalname);
-    const ext = path.extname(originalFilename).toLowerCase();
-    const bookId = uuidv4();
-    const bookDir = path.join(convertedDir, bookId);
-
-    // Get title from filename
-    const bookTitle = path.basename(originalFilename, ext)
-      .replace(/[-_]/g, ' ')
-      .replace(/([a-z])([A-Z])/g, '$1 $2');
-
-    if (ext === '.pdf') {
-      // Handle PDF upload
-      fs.mkdirSync(bookDir, { recursive: true });
-      
-      // Copy PDF to book directory (use copy+delete instead of rename for cross-device support)
-      const pdfPath = path.join(bookDir, 'document.pdf');
-      fs.copyFileSync(filePath, pdfPath);
-      fs.unlinkSync(filePath);
-      
-      // Save to database (PDF has 1 "page" in our system, actual pages handled by viewer)
-      db.addBook(bookId, bookTitle, originalFilename, 1, 'pdf');
-      
-      return res.json({
-        success: true,
-        bookId,
-        title: bookTitle,
-        bookType: 'pdf',
-        totalPages: 1
-      });
-    }
-
-    // Handle EPUB upload (existing logic)
-    const epubPath = filePath;
-    const mediaDir = path.join(bookDir, 'media');
-    const outputHtml = path.join(bookDir, 'index.html');
-
-    // Create directories
-    fs.mkdirSync(bookDir, { recursive: true });
-    fs.mkdirSync(mediaDir, { recursive: true });
-
-    // Convert EPUB to HTML using pandoc
-    const pandocCmd = `pandoc "${epubPath}" --standalone --extract-media="${mediaDir}" --toc --metadata title="${bookTitle}" -o "${outputHtml}"`;
-    
-    try {
-      execSync(pandocCmd, { stdio: 'pipe' });
-    } catch (pandocError) {
-      console.error('Pandoc error:', pandocError.message);
-      return res.status(500).json({ error: 'Failed to convert EPUB. Make sure pandoc is installed.' });
-    }
-
-    // Read HTML and split into pages
-    let htmlContent = fs.readFileSync(outputHtml, 'utf8');
-    
-    // Extract TOC and body
-    const pages = splitIntoPages(htmlContent, bookDir);
-    
-    // Save book info to database
-    db.addBook(bookId, bookTitle, originalFilename, pages.length, 'epub');
-
-    // Clean up original epub
-    fs.unlinkSync(epubPath);
-
-    res.json({
-      success: true,
-      bookId,
-      title: bookTitle,
-      bookType: 'epub',
-      totalPages: pages.length
-    });
-  } catch (error) {
-    console.error('Upload error:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// Get PDF file
-app.get('/api/books/:bookId/pdf', (req, res) => {
-  const { bookId } = req.params;
-  const pdfPath = path.join(convertedDir, bookId, 'document.pdf');
-  
-  if (!fs.existsSync(pdfPath)) {
-    return res.status(404).json({ error: 'PDF not found' });
-  }
-  
-  res.sendFile(pdfPath);
-});
-
 // Split HTML content into pages
-function splitIntoPages(htmlContent, bookDir) {
+function splitIntoPages(htmlContent: string, bookDir: string): string[] {
   // Extract head section
   const headMatch = htmlContent.match(/<head>([\s\S]*?)<\/head>/i);
   const headContent = headMatch ? headMatch[1] : '';
@@ -254,18 +159,114 @@ function splitIntoPages(htmlContent, bookDir) {
   return pages;
 }
 
+// Upload and convert EPUB to HTML, or store PDF
+app.post('/api/upload', upload.single('file'), async (req: Request, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const filePath = req.file.path;
+    // ファイル名をUTF-8にデコード（multerはlatin1でエンコードする）
+    const originalFilename = decodeFilename(req.file.originalname);
+    const ext = path.extname(originalFilename).toLowerCase();
+    const bookId = uuidv4();
+    const bookDir = path.join(convertedDir, bookId);
+
+    // Get title from filename
+    const bookTitle = path.basename(originalFilename, ext)
+      .replace(/[-_]/g, ' ')
+      .replace(/([a-z])([A-Z])/g, '$1 $2');
+
+    if (ext === '.pdf') {
+      // Handle PDF upload
+      fs.mkdirSync(bookDir, { recursive: true });
+      
+      // Copy PDF to book directory (use copy+delete instead of rename for cross-device support)
+      const pdfPath = path.join(bookDir, 'document.pdf');
+      fs.copyFileSync(filePath, pdfPath);
+      fs.unlinkSync(filePath);
+      
+      // Save to database (PDF has 1 "page" in our system, actual pages handled by viewer)
+      db.addBook(bookId, bookTitle, originalFilename, 1, 'pdf');
+      
+      return res.json({
+        success: true,
+        bookId,
+        title: bookTitle,
+        bookType: 'pdf',
+        totalPages: 1
+      });
+    }
+
+    // Handle EPUB upload (existing logic)
+    const epubPath = filePath;
+    const mediaDir = path.join(bookDir, 'media');
+    const outputHtml = path.join(bookDir, 'index.html');
+
+    // Create directories
+    fs.mkdirSync(bookDir, { recursive: true });
+    fs.mkdirSync(mediaDir, { recursive: true });
+
+    // Convert EPUB to HTML using pandoc
+    const pandocCmd = `pandoc "${epubPath}" --standalone --extract-media="${mediaDir}" --toc --metadata title="${bookTitle}" -o "${outputHtml}"`;
+    
+    try {
+      execSync(pandocCmd, { stdio: 'pipe' });
+    } catch (pandocError) {
+      console.error('Pandoc error:', (pandocError as Error).message);
+      return res.status(500).json({ error: 'Failed to convert EPUB. Make sure pandoc is installed.' });
+    }
+
+    // Read HTML and split into pages
+    const htmlContent = fs.readFileSync(outputHtml, 'utf8');
+    
+    // Extract TOC and body
+    const pages = splitIntoPages(htmlContent, bookDir);
+    
+    // Save book info to database
+    db.addBook(bookId, bookTitle, originalFilename, pages.length, 'epub');
+
+    // Clean up original epub
+    fs.unlinkSync(epubPath);
+
+    res.json({
+      success: true,
+      bookId,
+      title: bookTitle,
+      bookType: 'epub',
+      totalPages: pages.length
+    });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Get PDF file
+app.get('/api/books/:bookId/pdf', (req: Request, res: Response) => {
+  const { bookId } = req.params;
+  const pdfPath = path.join(convertedDir, bookId, 'document.pdf');
+  
+  if (!fs.existsSync(pdfPath)) {
+    return res.status(404).json({ error: 'PDF not found' });
+  }
+  
+  res.sendFile(pdfPath);
+});
+
 // Get all books
-app.get('/api/books', (req, res) => {
+app.get('/api/books', (_req: Request, res: Response) => {
   try {
     const books = db.getAllBooks();
     res.json(books);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Get book info
-app.get('/api/books/:bookId', (req, res) => {
+app.get('/api/books/:bookId', (req: Request, res: Response) => {
   try {
     const book = db.getBook(req.params.bookId);
     if (!book) {
@@ -288,16 +289,16 @@ app.get('/api/books/:bookId', (req, res) => {
       return res.json({ ...book, total: book.total_pages || 1, pages: [] });
     }
     
-    const pagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
+    const pagesInfo: PagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
     
     res.json({ ...book, ...pagesInfo });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Get book page content
-app.get('/api/books/:bookId/page/:pageNum', (req, res) => {
+app.get('/api/books/:bookId/page/:pageNum', (req: Request, res: Response) => {
   try {
     const { bookId, pageNum } = req.params;
     const pagePath = path.join(convertedDir, bookId, 'pages', `page-${pageNum}.html`);
@@ -309,12 +310,12 @@ app.get('/api/books/:bookId/page/:pageNum', (req, res) => {
     const content = fs.readFileSync(pagePath, 'utf8');
     res.json({ content, pageNum: parseInt(pageNum) });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Get all pages content
-app.get('/api/books/:bookId/all-pages', (req, res) => {
+app.get('/api/books/:bookId/all-pages', (req: Request, res: Response) => {
   try {
     const { bookId } = req.params;
     const pagesPath = path.join(convertedDir, bookId, 'pages.json');
@@ -323,8 +324,8 @@ app.get('/api/books/:bookId/all-pages', (req, res) => {
       return res.status(404).json({ error: 'Book not found' });
     }
     
-    const pagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
-    const pages = [];
+    const pagesInfo: PagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
+    const pages: { pageNum: number; content: string }[] = [];
     
     for (let i = 1; i <= pagesInfo.total; i++) {
       const pagePath = path.join(convertedDir, bookId, 'pages', `page-${i}.html`);
@@ -341,12 +342,12 @@ app.get('/api/books/:bookId/all-pages', (req, res) => {
     
     res.json({ pages, total: pagesInfo.total });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Get book TOC - extract headings from all pages
-app.get('/api/books/:bookId/toc', (req, res) => {
+app.get('/api/books/:bookId/toc', (req: Request, res: Response) => {
   try {
     const { bookId } = req.params;
     const pagesPath = path.join(convertedDir, bookId, 'pages.json');
@@ -355,8 +356,8 @@ app.get('/api/books/:bookId/toc', (req, res) => {
       return res.json({ toc: [] });
     }
     
-    const pagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
-    const toc = [];
+    const pagesInfo: PagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'));
+    const toc: TocItem[] = [];
     
     // Extract headings from each page
     for (let i = 1; i <= pagesInfo.total; i++) {
@@ -386,50 +387,50 @@ app.get('/api/books/:bookId/toc', (req, res) => {
     
     res.json({ toc });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Bookmark APIs
-app.get('/api/books/:bookId/bookmarks', (req, res) => {
+app.get('/api/books/:bookId/bookmarks', (req: Request, res: Response) => {
   try {
     const bookmarks = db.getBookmarks(req.params.bookId);
     res.json(bookmarks);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
-app.post('/api/books/:bookId/bookmarks', (req, res) => {
+app.post('/api/books/:bookId/bookmarks', (req: Request, res: Response) => {
   try {
     const { pageNum, note } = req.body;
     const bookmark = db.addBookmark(req.params.bookId, pageNum, note);
     res.json(bookmark);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
-app.delete('/api/bookmarks/:bookmarkId', (req, res) => {
+app.delete('/api/bookmarks/:bookmarkId', (req: Request, res: Response) => {
   try {
     db.deleteBookmark(req.params.bookmarkId);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Clips APIs (screenshot captures)
-app.get('/api/books/:bookId/clips', (req, res) => {
+app.get('/api/books/:bookId/clips', (req: Request, res: Response) => {
   try {
     const clips = db.getClips(req.params.bookId);
     res.json(clips);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
-app.get('/api/clips/:clipId', (req, res) => {
+app.get('/api/clips/:clipId', (req: Request, res: Response) => {
   try {
     const clip = db.getClip(req.params.clipId);
     if (!clip) {
@@ -437,54 +438,59 @@ app.get('/api/clips/:clipId', (req, res) => {
     }
     res.json(clip);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
-app.post('/api/books/:bookId/clips', (req, res) => {
+app.post('/api/books/:bookId/clips', (req: Request, res: Response) => {
   try {
-    const { pageNum, imageData, note, position } = req.body;
+    const { pageNum, imageData, note, position } = req.body as {
+      pageNum: number;
+      imageData: string;
+      note?: string;
+      position?: ClipPosition;
+    };
     if (!imageData) {
       return res.status(400).json({ error: 'imageData is required' });
     }
     const clip = db.addClip(req.params.bookId, pageNum, imageData, note, position);
     res.json(clip);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
-app.delete('/api/clips/:clipId', (req, res) => {
+app.delete('/api/clips/:clipId', (req: Request, res: Response) => {
   try {
     db.deleteClip(req.params.clipId);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Reading progress
-app.get('/api/books/:bookId/progress', (req, res) => {
+app.get('/api/books/:bookId/progress', (req: Request, res: Response) => {
   try {
     const progress = db.getProgress(req.params.bookId);
     res.json(progress || { currentPage: 1 });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
-app.post('/api/books/:bookId/progress', (req, res) => {
+app.post('/api/books/:bookId/progress', (req: Request, res: Response) => {
   try {
     const { currentPage } = req.body;
     db.saveProgress(req.params.bookId, currentPage);
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Delete book
-app.delete('/api/books/:bookId', (req, res) => {
+app.delete('/api/books/:bookId', (req: Request, res: Response) => {
   try {
     const { bookId } = req.params;
     
@@ -499,12 +505,12 @@ app.delete('/api/books/:bookId', (req, res) => {
     
     res.json({ success: true });
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Update book info
-app.patch('/api/books/:bookId', (req, res) => {
+app.patch('/api/books/:bookId', (req: Request, res: Response) => {
   try {
     const { bookId } = req.params;
     const { title, language } = req.body;
@@ -516,12 +522,12 @@ app.patch('/api/books/:bookId', (req, res) => {
     
     res.json(updated);
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Serve media files
-app.get('/api/books/:bookId/media/*', (req, res) => {
+app.get('/api/books/:bookId/media/*', (req: Request, res: Response) => {
   const mediaPath = path.join(convertedDir, req.params.bookId, 'media', req.params[0]);
   if (fs.existsSync(mediaPath)) {
     res.sendFile(mediaPath);
@@ -531,21 +537,23 @@ app.get('/api/books/:bookId/media/*', (req, res) => {
 });
 
 // Upload custom cover image for a book
-const coverUpload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const bookDir = path.join(convertedDir, req.params.bookId);
-      if (!fs.existsSync(bookDir)) {
-        return cb(new Error('Book not found'));
-      }
-      cb(null, bookDir);
-    },
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, `custom-cover${ext}`);
+const coverStorage = multer.diskStorage({
+  destination: (req, _file, cb) => {
+    const bookDir = path.join(convertedDir, req.params.bookId);
+    if (!fs.existsSync(bookDir)) {
+      return cb(new Error('Book not found'), '');
     }
-  }),
-  fileFilter: (req, file, cb) => {
+    cb(null, bookDir);
+  },
+  filename: (_req, file, cb) => {
+    const ext = path.extname(file.originalname).toLowerCase();
+    cb(null, `custom-cover${ext}`);
+  }
+});
+
+const coverUpload = multer({
+  storage: coverStorage,
+  fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
     const ext = path.extname(file.originalname).toLowerCase();
     if (['.png', '.jpg', '.jpeg', '.gif', '.webp'].includes(ext)) {
       cb(null, true);
@@ -556,7 +564,7 @@ const coverUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024 } // 10MB limit
 });
 
-app.post('/api/books/:bookId/cover', coverUpload.single('cover'), (req, res) => {
+app.post('/api/books/:bookId/cover', coverUpload.single('cover'), (req: Request, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -577,12 +585,12 @@ app.post('/api/books/:bookId/cover', coverUpload.single('cover'), (req, res) => 
     res.json({ success: true, message: 'Cover updated' });
   } catch (error) {
     console.error('Cover upload error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Delete custom cover (revert to original)
-app.delete('/api/books/:bookId/cover', (req, res) => {
+app.delete('/api/books/:bookId/cover', (req: Request, res: Response) => {
   try {
     const { bookId } = req.params;
     const bookDir = path.join(convertedDir, bookId);
@@ -601,12 +609,12 @@ app.delete('/api/books/:bookId/cover', (req, res) => {
     res.json({ success: true, deleted });
   } catch (error) {
     console.error('Cover delete error:', error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
 // Get cover image for a book
-app.get('/api/books/:bookId/cover', async (req, res) => {
+app.get('/api/books/:bookId/cover', async (req: Request, res: Response) => {
   const { bookId } = req.params;
   const bookDir = path.join(convertedDir, bookId);
   const mediaDir = path.join(bookDir, 'media');
@@ -670,7 +678,7 @@ app.get('/api/books/:bookId/cover', async (req, res) => {
       
       console.log('pdftoppm ran but no output file found');
     } catch (e) {
-      console.error('pdftoppm error:', e.message);
+      console.error('pdftoppm error:', (e as Error).message);
     }
     
     return res.status(404).json({ error: 'No cover found for PDF' });
@@ -690,7 +698,7 @@ app.get('/api/books/:bookId/cover', async (req, res) => {
   }
   
   // Find cover image - check common patterns
-  const findCover = (dir) => {
+  const findCover = (dir: string): string | null => {
     const items = fs.readdirSync(dir, { withFileTypes: true });
     
     for (const item of items) {
@@ -718,7 +726,7 @@ app.get('/api/books/:bookId/cover', async (req, res) => {
   
   // If no cover found, get the first image
   if (!coverPath) {
-    const findFirstImage = (dir) => {
+    const findFirstImage = (dir: string): string | null => {
       const items = fs.readdirSync(dir, { withFileTypes: true });
       
       for (const item of items) {
@@ -748,11 +756,13 @@ app.get('/api/books/:bookId/cover', async (req, res) => {
 
 // Serve React app for all other routes in production
 if (process.env.NODE_ENV === 'production') {
-  app.get('*', (req, res) => {
+  app.get('*', (_req: Request, res: Response) => {
     res.sendFile(path.join(__dirname, '../client/dist/index.html'));
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, () => {
   console.log(`Server running on http://0.0.0.0:${PORT}`);
 });
+
+export default app;
