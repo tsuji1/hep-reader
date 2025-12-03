@@ -382,27 +382,26 @@ async function downloadImage(url, destPath) {
         return false;
     }
 }
-// Helper: Split content by headings (h1 or h2)
-function splitContentByHeadings(content, title) {
-    const $ = cheerio.load(`<div>${content}</div>`);
+// Helper: Split content by h2 headings
+function splitContentByHeadings(content, _title) {
+    const $ = cheerio.load(`<div id="root">${content}</div>`);
     const sections = [];
     let currentSection = '';
-    let hasHeadings = false;
-    // Check if there are any h1 or h2 headings
-    const headings = $('h1, h2');
+    // Check if there are any h2 headings
+    const headings = $('h2');
     if (headings.length === 0) {
-        // No headings, return as single page
+        // No h2 headings, return as single page
         return [content];
     }
-    // Iterate through all direct children
-    $('div').children().each((_, el) => {
+    // Iterate through all direct children of root
+    $('#root').children().each((_, el) => {
         const $el = $(el);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const tagName = (el.tagName || el.name || '').toLowerCase();
-        if (tagName === 'h1' || tagName === 'h2') {
-            hasHeadings = true;
-            // Save previous section if it has content
-            if (currentSection.trim()) {
+        if (tagName === 'h2') {
+            // Save previous section if it has meaningful content (not just whitespace/empty tags)
+            const trimmedSection = currentSection.trim();
+            if (trimmedSection && trimmedSection.length > 10) {
                 sections.push(currentSection);
             }
             // Start new section with this heading
@@ -414,11 +413,12 @@ function splitContentByHeadings(content, title) {
         }
     });
     // Don't forget the last section
-    if (currentSection.trim()) {
+    const trimmedLast = currentSection.trim();
+    if (trimmedLast && trimmedLast.length > 10) {
         sections.push(currentSection);
     }
-    // If we only got one section or no headings found, return as single page
-    if (sections.length <= 1 || !hasHeadings) {
+    // If we only got one section, return as single page
+    if (sections.length <= 1) {
         return [content];
     }
     return sections;
