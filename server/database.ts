@@ -124,6 +124,17 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag_id);
 `);
 
+// AI Settings table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ai_settings (
+    provider TEXT PRIMARY KEY,
+    api_key TEXT NOT NULL,
+    model TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+
 // Books
 export function addBook(
   id: string,
@@ -356,6 +367,41 @@ export function removeTagFromBook(bookId: string, tagId: string): void {
   stmt.run(bookId, tagId);
 }
 
+// AI Settings
+export interface AiSetting {
+  provider: string;
+  api_key: string;
+  model: string | null;
+}
+
+export function getAiSettings(): AiSetting[] {
+  const stmt = db.prepare('SELECT provider, api_key, model FROM ai_settings');
+  return stmt.all() as AiSetting[];
+}
+
+export function getAiSetting(provider: string): AiSetting | undefined {
+  const stmt = db.prepare('SELECT provider, api_key, model FROM ai_settings WHERE provider = ?');
+  return stmt.get(provider) as AiSetting | undefined;
+}
+
+export function saveAiSetting(provider: string, apiKey: string, model: string | null = null): { provider: string; model: string | null } {
+  const stmt = db.prepare(`
+    INSERT INTO ai_settings (provider, api_key, model, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(provider) DO UPDATE SET
+      api_key = excluded.api_key,
+      model = excluded.model,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+  stmt.run(provider, apiKey, model);
+  return { provider, model };
+}
+
+export function deleteAiSetting(provider: string): void {
+  const stmt = db.prepare('DELETE FROM ai_settings WHERE provider = ?');
+  stmt.run(provider);
+}
+
 // Default export for backward compatibility
 export default {
   addBook,
@@ -379,5 +425,9 @@ export default {
   deleteTag,
   getBookTags,
   addTagToBook,
-  removeTagFromBook
+  removeTagFromBook,
+  getAiSettings,
+  getAiSetting,
+  saveAiSetting,
+  deleteAiSetting
 };

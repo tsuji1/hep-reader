@@ -1244,6 +1244,148 @@ app.get('/api/books/:bookId/cover', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== AI Settings APIs ====================
+
+// Get all AI settings (hides API keys)
+app.get('/api/ai/settings', (_req: Request, res: Response) => {
+  try {
+    const settings = db.getAiSettings();
+    // Hide actual API keys, just show if configured
+    const safeSettings = settings.map((s: { provider: string; model: string | null; api_key: string }) => ({
+      provider: s.provider,
+      model: s.model,
+      configured: !!s.api_key
+    }));
+    res.json(safeSettings);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Save AI setting
+app.post('/api/ai/settings', (req: Request, res: Response) => {
+  try {
+    const { provider, apiKey, model } = req.body;
+    if (!provider || !apiKey) {
+      return res.status(400).json({ error: 'provider and apiKey are required' });
+    }
+    const validProviders = ['gemini', 'claude', 'openai'];
+    if (!validProviders.includes(provider)) {
+      return res.status(400).json({ error: 'Invalid provider. Use: gemini, claude, openai' });
+    }
+    db.saveAiSetting(provider, apiKey, model);
+    res.json({ success: true, provider, model });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Delete AI setting
+app.delete('/api/ai/settings/:provider', (req: Request, res: Response) => {
+  try {
+    db.deleteAiSetting(req.params.provider);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Chat with AI
+app.post('/api/ai/chat', async (req: Request, res: Response) => {
+  try {
+    const { provider, message, context } = req.body;
+    if (!provider || !message) {
+      return res.status(400).json({ error: 'provider and message are required' });
+    }
+
+    const setting = db.getAiSetting(provider);
+    if (!setting || !setting.api_key) {
+      return res.status(400).json({ error: `${provider} API key is not configured` });
+    }
+
+    const apiKey = setting.api_key;
+    let response: string;
+
+    // Build prompt with context
+    const systemPrompt = context 
+      ? `あなたは読書アシスタントです。ユーザーが読んでいる本の内容について質問に答えてください。\n\n現在の本の内容:\n${context}`
+      : 'あなたは読書アシスタントです。ユーザーの質問に答えてください。';
+
+    if (provider === 'openai') {
+      const model = setting.model || 'gpt-4o-mini';
+      const apiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: message }
+          ],
+          max_tokens: 2000
+        })
+      });
+      const data = await apiRes.json() as { error?: { message: string }; choices?: { message?: { content?: string } }[] };
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+      response = data.choices?.[0]?.message?.content || 'No response';
+    } else if (provider === 'claude') {
+      const model = setting.model || 'claude-sonnet-4-20250514';
+      const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model,
+          max_tokens: 2000,
+          system: systemPrompt,
+          messages: [
+            { role: 'user', content: message }
+          ]
+        })
+      });
+      const data = await apiRes.json() as { error?: { message: string }; content?: { text?: string }[] };
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+      response = data.content?.[0]?.text || 'No response';
+    } else if (provider === 'gemini') {
+      const model = setting.model || 'gemini-2.0-flash';
+      const apiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [{ text: `${systemPrompt}\n\nユーザーの質問: ${message}` }]
+            }]
+          })
+        }
+      );
+      const data = await apiRes.json() as { error?: { message: string }; candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      if (data.error) {
+        throw new Error(data.error.message);
+      }
+      response = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
+    } else {
+      return res.status(400).json({ error: 'Unknown provider' });
+    }
+
+    res.json({ response });
+  } catch (error) {
+    console.error('AI chat error:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // Serve React app for all other routes in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (_req: Request, res: Response) => {
