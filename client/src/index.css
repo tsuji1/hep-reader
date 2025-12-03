@@ -263,7 +263,8 @@ body {
 }
 
 .book-card:hover .delete-btn,
-.book-card:hover .edit-btn {
+.book-card:hover .edit-btn,
+.book-card:hover .complete-btn {
   opacity: 1;
 }
 

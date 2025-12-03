@@ -33,6 +33,8 @@ function Home(): JSX.Element {
   // ページネーション
   const [currentLibraryPage, setCurrentLibraryPage] = useState<number>(1)
   const BOOKS_PER_PAGE = 10
+  // タイプフィルター
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<string>('all')
   const coverInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
@@ -184,11 +186,16 @@ function Home(): JSX.Element {
   })
 
   // Filter by tags (AND condition)
-  const filteredBooks = selectedTagFilters.length > 0
+  const tagFilteredBooks = selectedTagFilters.length > 0
     ? sortedBooks.filter(book => 
         selectedTagFilters.every(tagId => bookTags[book.id]?.some(t => t.id === tagId))
       )
     : sortedBooks
+
+  // Filter by type (EPUB/PDF/WEB)
+  const filteredBooks = selectedTypeFilter === 'all'
+    ? tagFilteredBooks
+    : tagFilteredBooks.filter(book => book.book_type === selectedTypeFilter)
 
   // Pagination
   const totalLibraryPages = Math.ceil(filteredBooks.length / BOOKS_PER_PAGE)
@@ -200,7 +207,7 @@ function Home(): JSX.Element {
   // Reset to page 1 when filter changes
   useEffect(() => {
     setCurrentLibraryPage(1)
-  }, [selectedTagFilters, sortBy])
+  }, [selectedTagFilters, selectedTypeFilter, sortBy])
 
   // Open book
   const openBook = (book: Book): void => {
@@ -305,6 +312,20 @@ function Home(): JSX.Element {
       }))
     } catch (error) {
       console.error('Failed to toggle tsundoku:', error)
+    }
+  }
+
+  // 読了完了にする
+  const markAsComplete = async (e: MouseEvent, book: Book): Promise<void> => {
+    e.stopPropagation()
+    const totalPages = book.book_type === 'pdf' ? book.pdf_total_pages : book.total_pages
+    if (!totalPages) return
+    
+    try {
+      await axios.post(`/api/books/${book.id}/progress`, { currentPage: totalPages })
+      fetchBooks()
+    } catch (error) {
+      console.error('Failed to mark as complete:', error)
     }
   }
 
@@ -484,6 +505,33 @@ function Home(): JSX.Element {
             </div>
           </div>
 
+          {/* タイプフィルター */}
+          <div style={{ marginBottom: '15px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <span style={{ color: '#666', fontSize: '0.9rem' }}>種類:</span>
+            {[
+              { value: 'all', label: 'すべて', color: '#667eea' },
+              { value: 'epub', label: '📖 EPUB', color: '#667eea' },
+              { value: 'pdf', label: '📄 PDF', color: '#ef4444' },
+              { value: 'website', label: '🌐 WEB', color: '#10b981' }
+            ].map(type => (
+              <button
+                key={type.value}
+                onClick={() => setSelectedTypeFilter(type.value)}
+                style={{
+                  padding: '4px 12px',
+                  border: 'none',
+                  borderRadius: '20px',
+                  cursor: 'pointer',
+                  fontSize: '0.85rem',
+                  background: selectedTypeFilter === type.value ? type.color : '#e2e8f0',
+                  color: selectedTypeFilter === type.value ? 'white' : '#333'
+                }}
+              >
+                {type.label}
+              </button>
+            ))}
+          </div>
+
           {/* タグフィルタ (AND検索: 複数選択可能) */}
           {allTags.length > 0 && (
             <div style={{ marginBottom: '20px', display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
@@ -553,6 +601,35 @@ function Home(): JSX.Element {
                   className="book-card"
                   onClick={() => openBook(book)}
                 >
+                  {/* 読了完了ボタン */}
+                  {getProgress(book) < 100 && (
+                    <button
+                      className="complete-btn"
+                      onClick={(e) => markAsComplete(e, book)}
+                      title="読了完了にする"
+                      style={{
+                        position: 'absolute',
+                        bottom: '8px',
+                        right: '48px',
+                        zIndex: 10,
+                        background: 'rgba(255,255,255,0.9)',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '32px',
+                        height: '32px',
+                        cursor: 'pointer',
+                        fontSize: '1rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                        opacity: 0,
+                        transition: 'opacity 0.2s'
+                      }}
+                    >
+                      ✅
+                    </button>
+                  )}
                   <button
                     className="tsundoku-btn"
                     onClick={(e) => addToTsundoku(e, book.id)}
