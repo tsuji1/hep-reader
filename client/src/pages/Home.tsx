@@ -30,6 +30,9 @@ function Home(): JSX.Element {
   const [showTagManager, setShowTagManager] = useState<boolean>(false)
   // 編集モーダル用タグ
   const [editBookTags, setEditBookTags] = useState<Tag[]>([])
+  // ページネーション
+  const [currentLibraryPage, setCurrentLibraryPage] = useState<number>(1)
+  const BOOKS_PER_PAGE = 10
   const coverInputRef = useRef<HTMLInputElement>(null)
   const navigate = useNavigate()
 
@@ -186,6 +189,18 @@ function Home(): JSX.Element {
         selectedTagFilters.every(tagId => bookTags[book.id]?.some(t => t.id === tagId))
       )
     : sortedBooks
+
+  // Pagination
+  const totalLibraryPages = Math.ceil(filteredBooks.length / BOOKS_PER_PAGE)
+  const paginatedBooks = filteredBooks.slice(
+    (currentLibraryPage - 1) * BOOKS_PER_PAGE,
+    currentLibraryPage * BOOKS_PER_PAGE
+  )
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentLibraryPage(1)
+  }, [selectedTagFilters, sortBy])
 
   // Open book
   const openBook = (book: Book): void => {
@@ -528,10 +543,11 @@ function Home(): JSX.Element {
               <p>EPUBファイルをアップロードして始めましょう</p>
             </div>
           ) : (
-            <div className="book-list">
-              {filteredBooks.map((book) => {
-                const hasTsundoku = bookTags[book.id]?.some(t => t.name === '積読')
-                return (
+            <>
+              <div className="book-list">
+                {paginatedBooks.map((book) => {
+                  const hasTsundoku = bookTags[book.id]?.some(t => t.name === '積読')
+                  return (
                 <div
                   key={book.id}
                   className="book-card"
@@ -645,7 +661,30 @@ function Home(): JSX.Element {
                   </div>
                 </div>
               )})}
-            </div>
+              </div>
+              
+              {/* Pagination */}
+              {totalLibraryPages > 1 && (
+                <div className="pagination">
+                  <button
+                    onClick={() => setCurrentLibraryPage(p => Math.max(1, p - 1))}
+                    disabled={currentLibraryPage === 1}
+                  >
+                    ← 前へ
+                  </button>
+                  <span className="page-info">
+                    {currentLibraryPage} / {totalLibraryPages} ページ
+                    <span className="total-count">（全{filteredBooks.length}冊）</span>
+                  </span>
+                  <button
+                    onClick={() => setCurrentLibraryPage(p => Math.min(totalLibraryPages, p + 1))}
+                    disabled={currentLibraryPage === totalLibraryPages}
+                  >
+                    次へ →
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </section>
       </main>
