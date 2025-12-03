@@ -37,6 +37,7 @@ function Reader(): JSX.Element {
   const [clipPageNum, setClipPageNum] = useState<number>(1)
   const [clipNote, setClipNote] = useState<string>('')
   const [clipPosition, setClipPosition] = useState<ClipPosition | null>(null)
+  const [generatingDescription, setGeneratingDescription] = useState<boolean>(false)
   
   const contentRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
@@ -262,6 +263,27 @@ function Reader(): JSX.Element {
       setClipMode(false)
     } catch (error) {
       console.error('Failed to save clip:', error)
+    }
+  }
+
+  // AI説明生成
+  const generateDescription = async (): Promise<void> => {
+    if (!book) return
+    setGeneratingDescription(true)
+    try {
+      const pageContent = getCurrentPageContext()
+      const res = await axios.post<{ description: string }>('/api/ai/generate-clip-description', {
+        bookTitle: book.title,
+        pageContent
+      })
+      if (res.data.description) {
+        setClipNote(res.data.description)
+      }
+    } catch (error) {
+      console.error('Failed to generate description:', error)
+      alert('説明の生成に失敗しました。AI設定を確認してください。')
+    } finally {
+      setGeneratingDescription(false)
     }
   }
 
@@ -641,12 +663,31 @@ function Reader(): JSX.Element {
                 <img src={clipImageData} alt="クリップ" />
               </div>
             )}
-            <textarea
-              placeholder="メモ (任意)"
-              value={clipNote}
-              onChange={(e) => setClipNote(e.target.value)}
-              rows={2}
-            />
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-start', marginBottom: '10px' }}>
+              <textarea
+                placeholder="メモ (任意)"
+                value={clipNote}
+                onChange={(e) => setClipNote(e.target.value)}
+                rows={2}
+                style={{ flex: 1 }}
+              />
+              <button
+                onClick={generateDescription}
+                disabled={generatingDescription}
+                title="AIで説明を生成"
+                style={{
+                  padding: '8px 12px',
+                  background: generatingDescription ? '#ccc' : '#667eea',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: generatingDescription ? 'wait' : 'pointer',
+                  fontSize: '1rem'
+                }}
+              >
+                {generatingDescription ? '⏳' : '✨'}
+              </button>
+            </div>
             <div className="buttons">
               <button
                 className="secondary"

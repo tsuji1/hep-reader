@@ -29,6 +29,128 @@ const ROOT_DIR = path.join(__dirname, '../..');
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
+
+// ===== AI Helper Functions =====
+interface AiResponse {
+  response: string;
+}
+
+async function callAi(prompt: string): Promise<string | null> {
+  // Try to get any configured AI provider
+  const settings = db.getAiSettings();
+  if (settings.length === 0) return null;
+  
+  // Prefer gemini > claude > openai (gemini is usually faster)
+  const providerOrder = ['gemini', 'claude', 'openai'];
+  const setting = providerOrder
+    .map(p => settings.find(s => s.provider === p))
+    .find(s => s && s.api_key);
+  
+  if (!setting) return null;
+  
+  const { provider, api_key: apiKey, model } = setting;
+  
+  try {
+    if (provider === 'openai') {
+      const modelName = model || 'gpt-4o-mini';
+      const apiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: modelName,
+          messages: [{ role: 'user', content: prompt }],
+          max_tokens: 500
+        })
+      });
+      const data = await apiRes.json() as { choices?: { message?: { content?: string } }[] };
+      return data.choices?.[0]?.message?.content || null;
+    } else if (provider === 'claude') {
+      const modelName = model || 'claude-sonnet-4-20250514';
+      const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: modelName,
+          max_tokens: 500,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      const data = await apiRes.json() as { content?: { text?: string }[] };
+      return data.content?.[0]?.text || null;
+    } else if (provider === 'gemini') {
+      const modelName = model || 'gemini-2.0-flash';
+      const apiRes = await fetch(
+        `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }]
+          })
+        }
+      );
+      const data = await apiRes.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+    }
+  } catch (error) {
+    console.error('AI call error:', error);
+  }
+  return null;
+}
+
+// Auto-suggest tags based on content
+async function suggestTags(title: string, content: string): Promise<string[]> {
+  const allTags = db.getAllTags();
+  if (allTags.length === 0) return [];
+  
+  const tagNames = allTags.map(t => t.name).join(', ');
+  const prompt = `以下の本/記事のタイトルと内容から、最も適切なタグを選んでください。
+タグは必ず以下のリストから選び、カンマ区切りで返してください（最大3つ）。
+該当するタグがなければ空で返してください。
+
+利用可能なタグ: ${tagNames}
+
+タイトル: ${title}
+内容（先頭500文字）: ${content.substring(0, 500)}
+
+選んだタグ（カンマ区切り）:`;
+
+  const response = await callAi(prompt);
+  if (!response) return [];
+  
+  // Parse response to extract tag names
+  const suggestedNames = response
+    .split(/[,、]/)
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+  
+  // Return only valid tag IDs
+  return allTags
+    .filter(t => suggestedNames.some(name => 
+      t.name.toLowerCase() === name.toLowerCase() || 
+      name.toLowerCase().includes(t.name.toLowerCase())
+    ))
+    .map(t => t.id);
+}
+
+// Generate clip description
+async function generateClipDescription(imageContext: string, bookTitle: string): Promise<string> {
+  const prompt = `以下の本からキャプチャした画像の簡潔な説明を日本語で1-2文で作成してください。
+本のタイトル: ${bookTitle}
+画像の文脈/周辺テキスト: ${imageContext.substring(0, 300)}
+
+説明:`;
+
+  const response = await callAi(prompt);
+  return response || '';
+}
 app.use('/uploads', express.static(path.join(ROOT_DIR, 'uploads')));
 app.use('/converted', express.static(path.join(ROOT_DIR, 'converted')));
 
@@ -194,6 +316,11 @@ app.post('/api/upload', upload.single('file'), async (req: Request, res: Respons
       // Save to database (PDF has 1 "page" in our system, actual pages handled by viewer)
       db.addBook(bookId, bookTitle, originalFilename, 1, 'pdf');
       
+      // Auto-suggest tags (async, don't wait)
+      suggestTags(bookTitle, originalFilename).then(tagIds => {
+        tagIds.forEach(tagId => db.addTagToBook(bookId, tagId));
+      }).catch(e => console.error('Auto-tag error:', e));
+      
       return res.json({
         success: true,
         bookId,
@@ -230,6 +357,11 @@ app.post('/api/upload', upload.single('file'), async (req: Request, res: Respons
     
     // Save book info to database
     db.addBook(bookId, bookTitle, originalFilename, pages.length, 'epub');
+
+    // Auto-suggest tags based on content (async, don't wait)
+    suggestTags(bookTitle, htmlContent).then(tagIds => {
+      tagIds.forEach(tagId => db.addTagToBook(bookId, tagId));
+    }).catch(e => console.error('Auto-tag error:', e));
 
     // Clean up original epub
     fs.unlinkSync(epubPath);
@@ -628,6 +760,16 @@ app.post('/api/save-url', async (req: Request, res: Response) => {
     // Save to database
     db.addWebsiteBook(bookId, metadata.title, url, totalPages);
     
+    // Auto-suggest tags based on content (async, don't wait)
+    // Add 'web' tag automatically for websites
+    const webTag = db.getAllTags().find(t => t.name === 'web');
+    if (webTag) {
+      db.addTagToBook(bookId, webTag.id);
+    }
+    suggestTags(metadata.title, fixedContent).then(tagIds => {
+      tagIds.forEach(tagId => db.addTagToBook(bookId, tagId));
+    }).catch(e => console.error('Auto-tag error:', e));
+    
     res.json({
       success: true,
       bookId,
@@ -864,6 +1006,26 @@ app.delete('/api/clips/:clipId', (req: Request, res: Response) => {
     db.deleteClip(req.params.clipId);
     res.json({ success: true });
   } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Generate clip description using AI
+app.post('/api/ai/generate-clip-description', async (req: Request, res: Response) => {
+  try {
+    const { bookTitle, pageContent } = req.body as {
+      bookTitle: string;
+      pageContent: string;
+    };
+    
+    if (!bookTitle || !pageContent) {
+      return res.status(400).json({ error: 'bookTitle and pageContent are required' });
+    }
+    
+    const description = await generateClipDescription(pageContent, bookTitle);
+    res.json({ description });
+  } catch (error) {
+    console.error('Generate description error:', error);
     res.status(500).json({ error: (error as Error).message });
   }
 });
