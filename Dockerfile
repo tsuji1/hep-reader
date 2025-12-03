@@ -10,6 +10,9 @@ RUN npm run build
 # Build stage for TypeScript server
 FROM node:iron-trixie-slim AS server-builder
 
+# Install Python for better-sqlite3 native module compilation
+RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY package*.json ./
 RUN npm install
