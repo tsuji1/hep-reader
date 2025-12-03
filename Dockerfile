@@ -11,8 +11,14 @@ RUN npm run build
 
 FROM node:20.19.6
 
-# Install pandoc and poppler-utils (for pdftoppm)
-RUN apt-get update && apt-get install -y pandoc poppler-utils && rm -rf /var/lib/apt/lists/*
+# Install pandoc, poppler-utils (for pdftoppm), and Japanese fonts
+RUN apt-get update && apt-get install -y \
+    pandoc \
+    poppler-utils \
+    fonts-noto-cjk \
+    fonts-noto-cjk-extra \
+    && rm -rf /var/lib/apt/lists/* \
+    && fc-cache -fv
 
 WORKDIR /app
 
