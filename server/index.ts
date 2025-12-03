@@ -610,6 +610,118 @@ function splitContentByHeadings(content: string, _title: string): string[] {
   return sections;
 }
 
+// FreshRSS integration - receive article from FreshRSS share button
+// FreshRSS Share URL format: http://your-server:10300/api/freshrss/share?url=~url~&title=~title~
+app.get('/api/freshrss/share', async (req: Request, res: Response) => {
+  try {
+    const { url, title } = req.query;
+    
+    if (!url || typeof url !== 'string') {
+      return res.status(400).send(`
+        <html>
+        <head><meta charset="UTF-8"><title>Error</title></head>
+        <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+          <h1>❌ URLが必要です</h1>
+          <p>FreshRSSの共有設定を確認してください</p>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Validate URL
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(url);
+      if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+        throw new Error('Invalid protocol');
+      }
+    } catch {
+      return res.status(400).send(`
+        <html>
+        <head><meta charset="UTF-8"><title>Error</title></head>
+        <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+          <h1>❌ 無効なURLです</h1>
+          <p>${url}</p>
+        </body>
+        </html>
+      `);
+    }
+    
+    // Show processing page first
+    const processingHtml = `
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>保存中... | EPUB Viewer</title>
+        <style>
+          body { font-family: sans-serif; padding: 40px; text-align: center; background: #f5f5f5; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .spinner { width: 50px; height: 50px; border: 4px solid #e2e8f0; border-top-color: #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+          @keyframes spin { to { transform: rotate(360deg); } }
+          h1 { color: #333; margin-bottom: 10px; }
+          p { color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="spinner"></div>
+          <h1>📚 記事を保存中...</h1>
+          <p>${title || url}</p>
+        </div>
+        <script>
+          fetch('/api/save-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: '${url.replace(/'/g, "\\'")}' })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              document.body.innerHTML = \`
+                <div class="container" style="max-width: 600px; margin: 40px auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center;">
+                  <h1 style="color: #22c55e;">✅ 保存しました！</h1>
+                  <p style="color: #333; font-size: 1.1em; margin: 20px 0;">\${data.title}</p>
+                  <p style="color: #666;">全 \${data.totalPages} ページ</p>
+                  <div style="margin-top: 30px;">
+                    <a href="/reader/\${data.bookId}" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 8px; margin-right: 10px;">📖 読む</a>
+                    <a href="/" style="display: inline-block; padding: 12px 24px; background: #e2e8f0; color: #333; text-decoration: none; border-radius: 8px;">📚 ライブラリ</a>
+                  </div>
+                  <p style="margin-top: 30px; color: #999; font-size: 0.9em;">このウィンドウは閉じても大丈夫です</p>
+                </div>
+              \`;
+            } else {
+              throw new Error(data.error || 'Failed to save');
+            }
+          })
+          .catch(err => {
+            document.body.innerHTML = \`
+              <div class="container" style="max-width: 600px; margin: 40px auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center;">
+                <h1 style="color: #ef4444;">❌ 保存に失敗しました</h1>
+                <p style="color: #666;">\${err.message}</p>
+                <a href="/" style="display: inline-block; margin-top: 20px; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 8px;">ライブラリへ</a>
+              </div>
+            \`;
+          });
+        </script>
+      </body>
+      </html>
+    `;
+    
+    res.send(processingHtml);
+  } catch (error) {
+    console.error('FreshRSS share error:', error);
+    res.status(500).send(`
+      <html>
+      <head><meta charset="UTF-8"><title>Error</title></head>
+      <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+        <h1>❌ エラーが発生しました</h1>
+        <p>${(error as Error).message}</p>
+      </body>
+      </html>
+    `);
+  }
+});
+
 // Save website URL
 app.post('/api/save-url', async (req: Request, res: Response) => {
   try {

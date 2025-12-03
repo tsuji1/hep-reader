@@ -47,6 +47,17 @@ function Settings(): JSX.Element {
   const [apiKey, setApiKey] = useState('')
   const [selectedModel, setSelectedModel] = useState('')
   const [saving, setSaving] = useState(false)
+  const [copied, setCopied] = useState(false)
+
+  // Get current server URL for FreshRSS configuration
+  const serverUrl = typeof window !== 'undefined' ? window.location.origin : ''
+  const freshRssShareUrl = `${serverUrl}/api/freshrss/share?url=~url~&title=~title~`
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
 
   useEffect(() => {
     fetchSettings()
@@ -210,6 +221,58 @@ function Settings(): JSX.Element {
               )}
             </div>
           ))}
+        </div>
+      </section>
+
+      <section className="settings-section">
+        <h2>📰 FreshRSS連携</h2>
+        <p className="settings-description">
+          FreshRSSから記事をEPUB Viewerに送信して保存できます。
+          FreshRSSの設定で以下のカスタム共有先を追加してください。
+        </p>
+
+        <div className="freshrss-config">
+          <div className="config-item">
+            <label>共有先名:</label>
+            <div className="config-value">
+              <code>EPUB Viewer</code>
+              <button 
+                className="copy-btn"
+                onClick={() => copyToClipboard('EPUB Viewer')}
+                title="コピー"
+              >
+                📋
+              </button>
+            </div>
+          </div>
+          
+          <div className="config-item">
+            <label>共有先URL:</label>
+            <div className="config-value">
+              <code className="url-code">{freshRssShareUrl}</code>
+              <button 
+                className="copy-btn"
+                onClick={() => copyToClipboard(freshRssShareUrl)}
+                title="コピー"
+              >
+                {copied ? '✓' : '📋'}
+              </button>
+            </div>
+          </div>
+
+          <div className="config-instructions">
+            <h4>設定方法:</h4>
+            <ol>
+              <li>FreshRSSの設定 → 統合 → カスタム共有を開く</li>
+              <li>「名前」に <code>EPUB Viewer</code> を入力</li>
+              <li>「URL」に上記のURLをコピーして貼り付け</li>
+              <li>保存して完了！</li>
+            </ol>
+            <p className="config-note">
+              💡 記事を開いた状態で共有ボタンから「EPUB Viewer」を選ぶと、
+              記事がライブラリに保存されます。
+            </p>
+          </div>
         </div>
       </section>
     </div>
