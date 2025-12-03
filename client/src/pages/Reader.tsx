@@ -29,6 +29,7 @@ function Reader(): JSX.Element {
   const [isPdf, setIsPdf] = useState<boolean>(false)
   const [pdfTotalPages, setPdfTotalPages] = useState<number>(0)
   const [showAiChat, setShowAiChat] = useState<boolean>(false)
+  const [pdfPageTexts, setPdfPageTexts] = useState<Map<number, string>>(new Map())
   
   // クリップ機能
   const [clipMode, setClipMode] = useState<boolean>(false)
@@ -333,7 +334,32 @@ function Reader(): JSX.Element {
       : ''
     
     if (isPdf) {
-      return `${preContext}PDF文書「${book?.title}」の${currentPage}ページ目を閲覧中です。`
+      // PDFの場合はテキストを抽出して渡す
+      const pageRange = [-2, -1, 0, 1, 2]
+      const contextPages: string[] = []
+      
+      for (const offset of pageRange) {
+        const pageNum = currentPage + offset
+        if (pageNum >= 1 && pageNum <= pdfTotalPages) {
+          const text = pdfPageTexts.get(pageNum)
+          if (text && text.trim()) {
+            const label = offset === 0 ? '【現在のページ】' : `【${offset > 0 ? '+' : ''}${offset}ページ】`
+            contextPages.push(`${label} (p.${pageNum})\n${text}`)
+          }
+        }
+      }
+      
+      if (contextPages.length > 0) {
+        const allContent = contextPages.join('\n\n---\n\n')
+        const maxLength = 6000
+        const truncated = allContent.length > maxLength 
+          ? allContent.slice(0, maxLength) + '...'
+          : allContent
+        
+        return `${preContext}PDF文書のタイトル: ${book?.title}\n現在のページ: ${currentPage} / ${pdfTotalPages}\n\n${truncated}`
+      }
+      
+      return `${preContext}PDF文書「${book?.title}」の${currentPage}ページ目を閲覧中です。（テキスト抽出中...）`
     }
     
     // 現在ページ ± 2ページ分のコンテンツを取得
@@ -622,6 +648,7 @@ function Reader(): JSX.Element {
               currentPage={currentPage}
               onPageChange={handlePdfPageChange}
               onTotalPagesChange={handlePdfTotalPages}
+              onPageTextExtracted={setPdfPageTexts}
               viewMode={viewMode}
               clipMode={clipMode}
               onClipCapture={handleClipCapture}

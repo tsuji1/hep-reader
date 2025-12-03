@@ -347,6 +347,7 @@ interface PdfViewerProps {
   currentPage: number
   onPageChange: (page: number) => void
   onTotalPagesChange?: (total: number) => void
+  onPageTextExtracted?: (pageTexts: Map<number, string>) => void
   viewMode: 'scroll' | 'page'
   clipMode: boolean
   onClipCapture?: (pageNum: number, imageData: string, position: ClipPosition) => void
@@ -354,7 +355,7 @@ interface PdfViewerProps {
   onClipClick?: (clip: Clip) => void
 }
 
-function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, viewMode, clipMode, onClipCapture, clips, onClipClick }: PdfViewerProps): JSX.Element {
+function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPageTextExtracted, viewMode, clipMode, onClipCapture, clips, onClipClick }: PdfViewerProps): JSX.Element {
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [totalPages, setTotalPages] = useState<number>(0)
   const [loading, setLoading] = useState<boolean>(true)
@@ -363,6 +364,7 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, view
   const containerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const isScrollingToPage = useRef<boolean>(false)
+  const pageTextsRef = useRef<Map<number, string>>(new Map())
 
   // PDFを読み込み
   useEffect(() => {
@@ -384,6 +386,30 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, view
         setTotalPages(pdfDoc.numPages)
         if (onTotalPagesChange) {
           onTotalPagesChange(pdfDoc.numPages)
+        }
+        
+        // テキスト抽出（現在ページ周辺）
+        if (onPageTextExtracted) {
+          const extractTexts = async () => {
+            const pageRange = [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2]
+            for (const pageNum of pageRange) {
+              if (pageNum >= 1 && pageNum <= pdfDoc.numPages && !pageTextsRef.current.has(pageNum)) {
+                try {
+                  const page = await pdfDoc.getPage(pageNum)
+                  const textContent = await page.getTextContent()
+                  const text = textContent.items
+                    .filter((item): item is { str: string } => 'str' in item)
+                    .map(item => item.str)
+                    .join(' ')
+                  pageTextsRef.current.set(pageNum, text)
+                } catch (e) {
+                  console.warn(`Failed to extract text from page ${pageNum}:`, e)
+                }
+              }
+            }
+            onPageTextExtracted(pageTextsRef.current)
+          }
+          extractTexts()
         }
         
         // 初期表示ページを設定
@@ -417,6 +443,36 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, view
       })
     }
   }, [currentPage, viewMode, pdf, totalPages])
+
+  // ページ変更時にテキスト抽出
+  useEffect(() => {
+    if (!pdf || !onPageTextExtracted) return
+    
+    const extractTexts = async () => {
+      const pageRange = [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2]
+      let hasNew = false
+      for (const pageNum of pageRange) {
+        if (pageNum >= 1 && pageNum <= totalPages && !pageTextsRef.current.has(pageNum)) {
+          try {
+            const page = await pdf.getPage(pageNum)
+            const textContent = await page.getTextContent()
+            const text = textContent.items
+              .filter((item): item is { str: string } => 'str' in item)
+              .map(item => item.str)
+              .join(' ')
+            pageTextsRef.current.set(pageNum, text)
+            hasNew = true
+          } catch (e) {
+            console.warn(`Failed to extract text from page ${pageNum}:`, e)
+          }
+        }
+      }
+      if (hasNew) {
+        onPageTextExtracted(pageTextsRef.current)
+      }
+    }
+    extractTexts()
+  }, [currentPage, pdf, totalPages, onPageTextExtracted])
 
   // スクロールモード時のIntersection Observer
   useEffect(() => {
