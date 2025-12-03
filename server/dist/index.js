@@ -382,44 +382,73 @@ async function downloadImage(url, destPath) {
         return false;
     }
 }
-// Helper: Split content by h2 headings
+// Helper: Split content by h2 headings and add markdown-style prefixes
 function splitContentByHeadings(content, _title) {
-    const $ = cheerio.load(`<div id="root">${content}</div>`);
-    const sections = [];
-    let currentSection = '';
+    const $ = cheerio.load(content);
+    // Add markdown-style prefixes to headings
+    $('h1').each((_, el) => {
+        const $el = $(el);
+        const text = $el.text();
+        if (!text.startsWith('# ')) {
+            $el.prepend('# ');
+        }
+    });
+    $('h2').each((_, el) => {
+        const $el = $(el);
+        const text = $el.text();
+        if (!text.startsWith('## ')) {
+            $el.prepend('## ');
+        }
+    });
+    $('h3').each((_, el) => {
+        const $el = $(el);
+        const text = $el.text();
+        if (!text.startsWith('### ')) {
+            $el.prepend('### ');
+        }
+    });
+    // Get the modified HTML
+    const modifiedContent = $.html();
     // Check if there are any h2 headings
     const headings = $('h2');
     if (headings.length === 0) {
         // No h2 headings, return as single page
-        return [content];
+        return [modifiedContent];
     }
-    // Iterate through all direct children of root
-    $('#root').children().each((_, el) => {
-        const $el = $(el);
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const tagName = (el.tagName || el.name || '').toLowerCase();
-        if (tagName === 'h2') {
-            // Save previous section if it has meaningful content (not just whitespace/empty tags)
-            const trimmedSection = currentSection.trim();
-            if (trimmedSection && trimmedSection.length > 10) {
+    // Use regex to split by h2 tags (works regardless of nesting)
+    // This regex captures everything before and after each h2
+    const h2Regex = /(<h2[^>]*>)/gi;
+    const parts = modifiedContent.split(h2Regex);
+    if (parts.length <= 1) {
+        return [modifiedContent];
+    }
+    const sections = [];
+    let currentSection = '';
+    for (let i = 0; i < parts.length; i++) {
+        const part = parts[i];
+        if (h2Regex.test(part) || part.match(/^<h2[^>]*>$/i)) {
+            // This is an h2 opening tag
+            // Save previous section if it has meaningful content
+            const trimmedSection = currentSection.replace(/<[^>]*>/g, '').trim();
+            if (trimmedSection.length > 20) {
                 sections.push(currentSection);
             }
-            // Start new section with this heading
-            currentSection = $.html($el) || '';
+            // Start new section with this h2 tag
+            currentSection = part;
         }
         else {
             // Add to current section
-            currentSection += $.html($el) || '';
+            currentSection += part;
         }
-    });
+    }
     // Don't forget the last section
-    const trimmedLast = currentSection.trim();
-    if (trimmedLast && trimmedLast.length > 10) {
+    const trimmedLast = currentSection.replace(/<[^>]*>/g, '').trim();
+    if (trimmedLast.length > 20) {
         sections.push(currentSection);
     }
-    // If we only got one section, return as single page
+    // If we only got one or no sections, return the full content
     if (sections.length <= 1) {
-        return [content];
+        return [modifiedContent];
     }
     return sections;
 }
