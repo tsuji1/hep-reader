@@ -20,7 +20,7 @@ function Reader(): JSX.Element {
   const [clips, setClips] = useState<Clip[]>([])
   const [toc, setToc] = useState<TocItem[]>([])
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('toc')
-  const [sidebarOpen, setSidebarOpen] = useState<boolean>(true)
+  const [sidebarOpen, setSidebarOpen] = useState<boolean>(false)
   const [showBookmarkModal, setShowBookmarkModal] = useState<boolean>(false)
   const [bookmarkNote, setBookmarkNote] = useState<string>('')
   const [showPageJumpModal, setShowPageJumpModal] = useState<boolean>(false)
@@ -564,7 +564,9 @@ function Reader(): JSX.Element {
 
       {/* Main Content */}
       <main className="reader-main">
-        <div className="reader-toolbar">
+        <div className="reader-toolbar-area">
+          <div className="reader-toolbar-trigger" />
+          <div className="reader-toolbar">
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
             {!sidebarOpen && (
               <button
@@ -637,6 +639,7 @@ function Reader(): JSX.Element {
               次へ →
             </button>
           </div>
+        </div>
         </div>
 
         <div className="reader-content" ref={contentRef}>

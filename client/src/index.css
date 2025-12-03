@@ -450,6 +450,19 @@ body {
   overflow: hidden;
 }
 
+.reader-toolbar-area {
+  position: relative;
+}
+
+.reader-toolbar-trigger {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 20px;
+  z-index: 5;
+}
+
 .reader-toolbar {
   display: flex;
   align-items: center;
@@ -457,6 +470,14 @@ body {
   padding: 15px 20px;
   background: white;
   border-bottom: 1px solid #eee;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  position: relative;
+  z-index: 10;
+}
+
+.reader-toolbar-area:hover .reader-toolbar {
+  opacity: 1;
 }
 
 .reader-toolbar .nav-buttons {
