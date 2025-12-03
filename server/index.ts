@@ -1033,13 +1033,14 @@ app.post('/api/ai/generate-clip-description', async (req: Request, res: Response
 // Auto-tag all existing books
 app.post('/api/ai/auto-tag-all', async (req: Request, res: Response) => {
   try {
+    const { force } = req.body as { force?: boolean };
     const books = db.getAllBooks();
     const results: { bookId: string; title: string; tags: string[] }[] = [];
     
     for (const book of books) {
-      // Skip if book already has tags
+      // Skip if book already has tags (unless force is true)
       const existingTags = db.getBookTags(book.id);
-      if (existingTags.length > 0) {
+      if (!force && existingTags.length > 0) {
         results.push({ bookId: book.id, title: book.title, tags: existingTags.map(t => t.name) });
         continue;
       }
