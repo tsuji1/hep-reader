@@ -184,6 +184,8 @@ npm test && docker compose up -d --build
 
 [MIT License](LICENSE)
 
+このプロジェクトの自作コード部分はMITライセンスです。依存しているライブラリ（React, pdf.js, Express等）はそれぞれのライセンス（Apache-2.0, ISC, BSD等）に従います。
+
 ## 作者
 
-yuzugon
+tsuji1
