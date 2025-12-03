@@ -4,7 +4,7 @@ EPUB・PDFファイルをブラウザで閲覧できるセルフホスト型Web�
 
 ## 概要
 
-EPUB形式の電子書籍をpandocでHTMLに変換し、PDFはpdf.jsでレンダリング。快適な読書体験を提供します。AIチャット機能で本の内容について質問したり、FreshRSSと連携してWeb記事を保存することもできます。
+EPUB形式の電子書籍をpandocでHTMLに変換し、PDFはpdf.jsでレンダリング。快適な読書体験を提供します。AIチャット機能で本の内容について質問することもできます。
 
 ### 主な特徴
 
@@ -17,7 +17,6 @@ EPUB形式の電子書籍をpandocでHTMLに変換し、PDFはpdf.jsでレンダ
 - 🏷️ **タグ機能**: 本を分類・整理（積読タグ等）
 - 📊 **進捗保存**: 読んだ位置を自動保存、次回続きから再開
 - 🌐 **多言語対応**: 言語設定により翻訳拡張機能との連携が可能
-- 📡 **FreshRSS連携**: RSSリーダーから記事を直接保存
 - 📱 **レスポンシブ**: PC・タブレット・スマホ対応
 
 ## 必要環境
@@ -79,12 +78,6 @@ open http://localhost:3000
 1. 設定画面（⚙️）でAPIキーを登録（Gemini/Claude/OpenAI）
 2. リーダー画面で🤖ボタンをクリック
 3. 現在のページ内容をコンテキストとしてAIに質問
-
-### FreshRSS連携
-
-1. 設定画面で共有URLをコピー
-2. FreshRSSの設定 → 統合 → カスタム共有サービスに登録
-3. FreshRSS内で記事を共有するとEPUB Viewerに保存
 
 ### PDF機能
 
@@ -155,8 +148,6 @@ epub-html-viewer/
 | GET/POST/DELETE | `/api/books/:id/tags` | 書籍タグ |
 | **AI** |||
 | POST | `/api/ai/chat` | AIチャット |
-| **外部連携** |||
-| GET | `/api/freshrss/share` | FreshRSS共有 |
 
 ## 開発
 
