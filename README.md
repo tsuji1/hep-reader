@@ -1,45 +1,37 @@
-# 📚 EPUB HTML Viewer
+# 📚 EPUB/PDF Viewer
 
-EPUBファイルをHTMLに変換してブラウザで閲覧できるセルフホスト型Webアプリケーションです。
+EPUB・PDFファイルをブラウザで閲覧できるセルフホスト型Webアプリケーションです。
 
 ## 概要
 
-EPUB形式の電子書籍をpandocでHTMLに変換し、快適な読書体験を提供します。縦スクロールとページ切り替えの両方のモードに対応し、しおりや読書進捗の保存機能も備えています。また、書籍ごとに言語設定ができるため、ブラウザの翻訳機能と組み合わせて外国語の本を日本語で読むことも可能です。
+EPUB形式の電子書籍をpandocでHTMLに変換し、PDFはpdf.jsでレンダリング。快適な読書体験を提供します。AIチャット機能で本の内容について質問したり、FreshRSSと連携してWeb記事を保存することもできます。
 
 ### 主な特徴
 
-- 🔄 **EPUB→HTML変換**: pandocを使用した高品質な変換
+- 📖 **EPUB/PDF対応**: EPUBはHTMLに変換、PDFはそのまま高品質表示
+- 🌐 **Webページ保存**: URLを入力してWeb記事をオフライン保存
+- 🤖 **AIチャット**: Gemini/Claude/OpenAIで本の内容について質問
 - 📜 **2つの閲覧モード**: 縦スクロール / ページ切り替え
 - 🔖 **しおり機能**: メモ付きで任意のページをブックマーク
+- 📷 **クリップ機能**: PDF内の範囲を選択して画像として保存
+- 🏷️ **タグ機能**: 本を分類・整理（積読タグ等）
 - 📊 **進捗保存**: 読んだ位置を自動保存、次回続きから再開
 - 🌐 **多言語対応**: 言語設定により翻訳拡張機能との連携が可能
+- 📡 **FreshRSS連携**: RSSリーダーから記事を直接保存
 - 📱 **レスポンシブ**: PC・タブレット・スマホ対応
-
-## スクリーンショット
-
-### ライブラリ画面
-- 書籍一覧の表示（カバー画像、タイトル、進捗バー）
-- ドラッグ＆ドロップでEPUBをアップロード
-- 並び替え（最終閲覧日時/タイトル/追加日時）
-- 書籍ごとの設定編集（タイトル、言語）
-
-### リーダー画面
-- 目次・しおりのサイドバー
-- スクロールモード / ページモード切り替え
-- ページジャンプ機能
 
 ## 必要環境
 
 - **Docker** および **Docker Compose**（推奨）
-- または Node.js 18+ と pandoc
+- または Node.js 20+ と pandoc
 
-## セットアップ
+## クイックスタート
 
 ### Docker（推奨）
 
 ```bash
 # リポジトリをクローン
-git clone <repository-url>
+git clone https://github.com/yuzugon/epub-html-viewer.git
 cd epub-html-viewer
 
 # 起動
@@ -54,11 +46,9 @@ open http://localhost:10300
 ```bash
 # pandocのインストール
 # Ubuntu/Debian
-sudo apt install pandoc
+sudo apt install pandoc poppler-utils
 # macOS
-brew install pandoc
-# Windows
-winget install pandoc
+brew install pandoc poppler
 
 # 依存関係のインストール
 npm run install:all
@@ -66,72 +56,62 @@ npm run install:all
 # 開発サーバー起動
 npm run dev
 
-# アクセス
+# アクセス（Vite: 3000, Express: 3001）
 open http://localhost:3000
 ```
 
 ## 使い方
 
-### 1. 書籍のアップロード
+### 書籍のアップロード
 
 1. ブラウザで http://localhost:10300 にアクセス
-2. EPUBファイルをドラッグ＆ドロップ、またはクリックして選択
-3. 自動的にHTMLに変換され、ライブラリに追加されます
+2. EPUB/PDFファイルをドラッグ＆ドロップ、またはクリックして選択
+3. 自動的に変換・追加されライブラリに表示
 
-### 2. 書籍の閲覧
+### Webページの保存
 
-1. ライブラリから読みたい本をクリック
-2. 閲覧モードを選択
-   - 📜 **スクロールモード**: 全ページを縦スクロールで連続表示
-   - 📄 **ページモード**: 1ページずつ表示、前へ/次へで移動
+1. URLフィールドにWebページのURLを入力
+2. 「保存」ボタンをクリック
+3. 本文と画像が抽出されオフラインで閲覧可能に
 
-### 3. しおり機能
+### AIチャット機能
 
-1. 保存したいページで「📑 しおり」ボタンをクリック
-2. 任意でメモを追加して保存
-3. サイドバーの「しおり」タブから一覧を確認・移動
+1. 設定画面（⚙️）でAPIキーを登録（Gemini/Claude/OpenAI）
+2. リーダー画面で🤖ボタンをクリック
+3. 現在のページ内容をコンテキストとしてAIに質問
 
-### 4. 書籍設定の編集
+### FreshRSS連携
 
-1. ライブラリで書籍カードにホバー
-2. ⚙ ボタンをクリック
-3. タイトルや言語を変更して保存
+1. 設定画面で共有URLをコピー
+2. FreshRSSの設定 → 統合 → カスタム共有サービスに登録
+3. FreshRSS内で記事を共有するとEPUB Viewerに保存
 
-### 5. 翻訳機能の活用
+### PDF機能
 
-1. 書籍の言語を「英語」など原文の言語に設定
-2. ブラウザの翻訳拡張機能（例: Google翻訳）を有効化
-3. 自動的に日本語に翻訳されます
+- **ズーム**: ツールバーの +/- ボタン
+- **クリップ**: 📷ボタンで範囲選択モード、ドラッグで画像保存
+- **テキスト選択**: 通常モードでテキストを選択・コピー可能
 
 ## 技術仕様
 
 ### アーキテクチャ
 
 ```
-┌─────────────────────────────────────────────────┐
-│                   Client (React)                │
-│  ┌─────────┐  ┌─────────┐  ┌─────────────────┐  │
-│  │  Home   │  │ Reader  │  │   Components    │  │
-│  └─────────┘  └─────────┘  └─────────────────┘  │
-└─────────────────────┬───────────────────────────┘
-                      │ HTTP/REST API
-┌─────────────────────▼───────────────────────────┐
-│                 Server (Express)                │
-│  ┌─────────┐  ┌─────────┐  ┌─────────────────┐  │
-│  │  API    │  │ pandoc  │  │    Database     │  │
-│  │ Routes  │  │ convert │  │   (SQLite)      │  │
-│  └─────────┘  └─────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────┘
+Client (React/Vite:3000) ──API──> Server (Express:3001) ──pandoc──> converted/{bookId}/
+         ↓ proxy                    ↓
+        /api/* → :3001         SQLite (data/epub-viewer.db)
 ```
 
 ### 技術スタック
 
 | レイヤー | 技術 |
 |---------|------|
-| フロントエンド | React 18, Vite, React Router |
-| バックエンド | Node.js, Express.js |
+| フロントエンド | React 18, TypeScript, Vite, React Router, pdf.js |
+| バックエンド | Node.js, Express.js, TypeScript |
 | データベース | SQLite (better-sqlite3) |
-| 変換エンジン | pandoc |
+| 変換エンジン | pandoc (EPUB→HTML), poppler (PDF) |
+| AI連携 | Gemini API, Claude API, OpenAI API |
+| テスト | Vitest, supertest |
 | コンテナ | Docker, Docker Compose |
 
 ### ディレクトリ構造
@@ -139,109 +119,71 @@ open http://localhost:3000
 ```
 epub-html-viewer/
 ├── client/                 # Reactフロントエンド
-│   ├── src/
-│   │   ├── pages/
-│   │   │   ├── Home.jsx    # ライブラリ画面
-│   │   │   └── Reader.jsx  # リーダー画面
-│   │   ├── App.jsx         # ルーティング
-│   │   ├── index.css       # スタイル
-│   │   └── main.jsx        # エントリーポイント
-│   ├── package.json
-│   └── vite.config.js
+│   └── src/
+│       ├── pages/          # Home, Reader, Settings
+│       ├── components/     # PdfViewer, AiChat等
+│       └── types.ts        # 型定義
 ├── server/                 # Expressバックエンド
-│   ├── index.js            # APIサーバー
-│   └── database.js         # DB操作
+│   ├── index.ts            # APIサーバー
+│   └── database.ts         # DB操作
 ├── data/                   # SQLiteデータベース
-├── uploads/                # アップロード一時保存
-├── converted/              # 変換済みHTMLファイル
-│   └── {bookId}/
-│       ├── pages/          # ページ別HTML
-│       ├── media/          # 画像等
-│       └── pages.json      # ページ情報
+├── converted/              # 変換済みファイル
 ├── docker-compose.yml
 ├── Dockerfile
 └── package.json
-```
-
-### データベーススキーマ
-
-```sql
--- 書籍テーブル
-CREATE TABLE books (
-  id TEXT PRIMARY KEY,
-  title TEXT NOT NULL,
-  original_filename TEXT,
-  total_pages INTEGER DEFAULT 1,
-  category TEXT,
-  language TEXT DEFAULT 'en',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- しおりテーブル
-CREATE TABLE bookmarks (
-  id TEXT PRIMARY KEY,
-  book_id TEXT NOT NULL,
-  page_num INTEGER NOT NULL,
-  note TEXT,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-);
-
--- 読書進捗テーブル
-CREATE TABLE reading_progress (
-  book_id TEXT PRIMARY KEY,
-  current_page INTEGER DEFAULT 1,
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
-);
 ```
 
 ### API リファレンス
 
 | Method | Endpoint | 説明 |
 |--------|----------|------|
-| **書籍管理** |||
-| POST | `/api/upload` | EPUBアップロード・変換 |
-| GET | `/api/books` | 書籍一覧取得 |
-| GET | `/api/books/:id` | 書籍詳細取得 |
-| PATCH | `/api/books/:id` | 書籍情報更新（タイトル、言語） |
+| **書籍** |||
+| POST | `/api/upload` | EPUB/PDFアップロード |
+| POST | `/api/save-url` | URL保存 |
+| GET | `/api/books` | 書籍一覧 |
+| PATCH | `/api/books/:id` | 書籍更新 |
 | DELETE | `/api/books/:id` | 書籍削除 |
 | **コンテンツ** |||
-| GET | `/api/books/:id/page/:num` | 指定ページ取得 |
 | GET | `/api/books/:id/all-pages` | 全ページ取得 |
-| GET | `/api/books/:id/toc` | 目次取得 |
-| GET | `/api/books/:id/cover` | カバー画像取得 |
-| GET | `/api/books/:id/media/*` | メディアファイル取得 |
-| **しおり** |||
-| GET | `/api/books/:id/bookmarks` | しおり一覧取得 |
-| POST | `/api/books/:id/bookmarks` | しおり追加 |
-| DELETE | `/api/bookmarks/:id` | しおり削除 |
-| **進捗** |||
-| GET | `/api/books/:id/progress` | 読書進捗取得 |
-| POST | `/api/books/:id/progress` | 読書進捗保存 |
+| GET | `/api/books/:id/pdf` | PDFファイル |
+| GET | `/api/books/:id/cover` | カバー画像 |
+| **しおり・クリップ** |||
+| GET/POST | `/api/books/:id/bookmarks` | しおり |
+| GET/POST | `/api/books/:id/clips` | クリップ |
+| **タグ** |||
+| GET/POST | `/api/tags` | タグ管理 |
+| GET/POST/DELETE | `/api/books/:id/tags` | 書籍タグ |
+| **AI** |||
+| POST | `/api/ai/chat` | AIチャット |
+| **外部連携** |||
+| GET | `/api/freshrss/share` | FreshRSS共有 |
 
-### 環境変数
+## 開発
 
-| 変数名 | デフォルト | 説明 |
-|--------|-----------|------|
-| `PORT` | 3001 | サーバーポート |
-| `NODE_ENV` | development | 環境（production/development） |
+```bash
+# テスト実行
+npm test
+
+# テスト（ウォッチモード）
+npm run test:watch
+
+# Dockerビルド＆デプロイ
+npm test && docker compose up -d --build
+```
 
 ## トラブルシューティング
 
-### 変換に失敗する
-- pandocがインストールされているか確認
-- EPUBファイルが破損していないか確認
-
-### 翻訳が動作しない
-- 書籍の言語設定を確認（原文の言語に設定）
-- ブラウザの翻訳拡張機能が有効か確認
-
-### 画像が表示されない
-- 開発者ツールでネットワークエラーを確認
-- `/api/books/:id/media/` へのアクセスが正常か確認
+| 問題 | 確認ポイント |
+|------|-------------|
+| 変換失敗 | `which pandoc` でインストール確認 |
+| PDF表示されない | poppler-utilsがインストールされているか |
+| 画像非表示 | `/api/books/:id/media/*` ルート確認 |
+| AI動作しない | 設定画面でAPIキーが登録されているか |
 
 ## ライセンス
 
-MIT License
+[MIT License](LICENSE)
+
+## 作者
+
+yuzugon
