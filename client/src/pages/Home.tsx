@@ -369,17 +369,19 @@ function Home(): JSX.Element {
           <Link to="/">
             <h1>📚 EPUB Viewer</h1>
           </Link>
-          <button
-            className="settings-link"
-            title="選択した本を積読に追加"
-            onClick={addToTsundoku}
-            style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            📚
-          </button>
-          <Link to="/settings" className="settings-link" title="設定">
-            ⚙️
-          </Link>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <button
+              className="settings-link"
+              title="表示中の本を積読に追加"
+              onClick={addToTsundoku}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.5rem' }}
+            >
+              📖
+            </button>
+            <Link to="/settings" className="settings-link" title="設定">
+              ⚙️
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -687,17 +689,19 @@ function Home(): JSX.Element {
                       />
                       {tag.name}
                     </span>
-                    <button
-                      onClick={() => deleteTagHandler(tag.id)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: '#dc3545'
-                      }}
-                    >
-                      🗑️
-                    </button>
+                    {tag.name !== '積読' && (
+                      <button
+                        onClick={() => deleteTagHandler(tag.id)}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          cursor: 'pointer',
+                          color: '#dc3545'
+                        }}
+                      >
+                        🗑️
+                      </button>
+                    )}
                   </div>
                 ))
               )}

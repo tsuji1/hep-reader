@@ -1030,6 +1030,57 @@ app.post('/api/ai/generate-clip-description', async (req: Request, res: Response
   }
 });
 
+// Auto-tag all existing books
+app.post('/api/ai/auto-tag-all', async (req: Request, res: Response) => {
+  try {
+    const books = db.getAllBooks();
+    const results: { bookId: string; title: string; tags: string[] }[] = [];
+    
+    for (const book of books) {
+      // Skip if book already has tags
+      const existingTags = db.getBookTags(book.id);
+      if (existingTags.length > 0) {
+        results.push({ bookId: book.id, title: book.title, tags: existingTags.map(t => t.name) });
+        continue;
+      }
+      
+      // Get content for tag suggestion
+      let content = book.title;
+      const bookDir = path.join(convertedDir, book.id);
+      const pagesDir = path.join(bookDir, 'pages');
+      
+      // Try to read first page content
+      if (fs.existsSync(path.join(pagesDir, 'page-1.html'))) {
+        try {
+          const pageContent = fs.readFileSync(path.join(pagesDir, 'page-1.html'), 'utf8');
+          content = pageContent.substring(0, 1000);
+        } catch (e) {
+          // Ignore read errors
+        }
+      }
+      
+      // Suggest and add tags
+      const tagIds = await suggestTags(book.title, content);
+      const addedTags: string[] = [];
+      for (const tagId of tagIds) {
+        db.addTagToBook(book.id, tagId);
+        const tag = db.getAllTags().find(t => t.id === tagId);
+        if (tag) addedTags.push(tag.name);
+      }
+      
+      results.push({ bookId: book.id, title: book.title, tags: addedTags });
+      
+      // Small delay to avoid rate limiting
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    
+    res.json({ success: true, results });
+  } catch (error) {
+    console.error('Auto-tag all error:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // Reading progress
 app.get('/api/books/:bookId/progress', (req: Request, res: Response) => {
   try {
@@ -1137,6 +1188,12 @@ app.post('/api/tags', (req: Request, res: Response) => {
 // Delete tag
 app.delete('/api/tags/:tagId', (req: Request, res: Response) => {
   try {
+    // Check if it's the protected "積読" tag
+    const tags = db.getAllTags();
+    const tagToDelete = tags.find(t => t.id === req.params.tagId);
+    if (tagToDelete && tagToDelete.name === '積読') {
+      return res.status(400).json({ error: '積読タグは削除できません' });
+    }
     db.deleteTag(req.params.tagId);
     res.json({ success: true });
   } catch (error) {
