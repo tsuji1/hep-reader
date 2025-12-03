@@ -21,21 +21,24 @@ function decodeFilename(filename: string): string {
   }
 }
 
+// ルートディレクトリ（コンパイル後は server/dist/ にあるため2階層上）
+const ROOT_DIR = path.join(__dirname, '../..');
+
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/converted', express.static(path.join(__dirname, '../converted')));
+app.use('/uploads', express.static(path.join(ROOT_DIR, 'uploads')));
+app.use('/converted', express.static(path.join(ROOT_DIR, 'converted')));
 
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../client/dist')));
+  app.use(express.static(path.join(ROOT_DIR, 'client/dist')));
 }
 
 // Ensure directories exist
-const uploadsDir = path.join(__dirname, '../uploads');
-const convertedDir = path.join(__dirname, '../converted');
+const uploadsDir = path.join(ROOT_DIR, 'uploads');
+const convertedDir = path.join(ROOT_DIR, 'converted');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 if (!fs.existsSync(convertedDir)) fs.mkdirSync(convertedDir, { recursive: true });
 
@@ -757,7 +760,7 @@ app.get('/api/books/:bookId/cover', async (req: Request, res: Response) => {
 // Serve React app for all other routes in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (_req: Request, res: Response) => {
-    res.sendFile(path.join(__dirname, '../client/dist/index.html'));
+    res.sendFile(path.join(ROOT_DIR, 'client/dist/index.html'));
   });
 }
 

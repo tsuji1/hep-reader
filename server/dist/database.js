@@ -21,7 +21,9 @@ const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const path_1 = __importDefault(require("path"));
 const fs_1 = __importDefault(require("fs"));
 const uuid_1 = require("uuid");
-const dbPath = path_1.default.join(__dirname, '../data/epub-viewer.db');
+// ルートディレクトリ（コンパイル後は server/dist/ にあるため2階層上）
+const ROOT_DIR = path_1.default.join(__dirname, '../..');
+const dbPath = path_1.default.join(ROOT_DIR, 'data/epub-viewer.db');
 // Ensure data directory exists
 const dataDir = path_1.default.dirname(dbPath);
 if (!fs_1.default.existsSync(dataDir)) {

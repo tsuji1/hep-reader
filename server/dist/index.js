@@ -23,19 +23,21 @@ function decodeFilename(filename) {
         return filename;
     }
 }
+// ルートディレクトリ（コンパイル後は server/dist/ にあるため2階層上）
+const ROOT_DIR = path_1.default.join(__dirname, '../..');
 // Middleware
 app.use((0, cors_1.default)());
 app.use(express_1.default.json({ limit: '50mb' }));
 app.use(express_1.default.urlencoded({ limit: '50mb', extended: true }));
-app.use('/uploads', express_1.default.static(path_1.default.join(__dirname, '../uploads')));
-app.use('/converted', express_1.default.static(path_1.default.join(__dirname, '../converted')));
+app.use('/uploads', express_1.default.static(path_1.default.join(ROOT_DIR, 'uploads')));
+app.use('/converted', express_1.default.static(path_1.default.join(ROOT_DIR, 'converted')));
 // Serve static files in production
 if (process.env.NODE_ENV === 'production') {
-    app.use(express_1.default.static(path_1.default.join(__dirname, '../client/dist')));
+    app.use(express_1.default.static(path_1.default.join(ROOT_DIR, 'client/dist')));
 }
 // Ensure directories exist
-const uploadsDir = path_1.default.join(__dirname, '../uploads');
-const convertedDir = path_1.default.join(__dirname, '../converted');
+const uploadsDir = path_1.default.join(ROOT_DIR, 'uploads');
+const convertedDir = path_1.default.join(ROOT_DIR, 'converted');
 if (!fs_1.default.existsSync(uploadsDir))
     fs_1.default.mkdirSync(uploadsDir, { recursive: true });
 if (!fs_1.default.existsSync(convertedDir))
@@ -673,7 +675,7 @@ app.get('/api/books/:bookId/cover', async (req, res) => {
 // Serve React app for all other routes in production
 if (process.env.NODE_ENV === 'production') {
     app.get('*', (_req, res) => {
-        res.sendFile(path_1.default.join(__dirname, '../client/dist/index.html'));
+        res.sendFile(path_1.default.join(ROOT_DIR, 'client/dist/index.html'));
     });
 }
 app.listen(PORT, () => {

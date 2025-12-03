@@ -4,7 +4,9 @@ import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import type { Book, BookInput, Bookmark, ReadingProgress, Clip, ClipPosition } from './types';
 
-const dbPath = path.join(__dirname, '../data/epub-viewer.db');
+// ルートディレクトリ（コンパイル後は server/dist/ にあるため2階層上）
+const ROOT_DIR = path.join(__dirname, '../..');
+const dbPath = path.join(ROOT_DIR, 'data/epub-viewer.db');
 
 // Ensure data directory exists
 const dataDir = path.dirname(dbPath);
