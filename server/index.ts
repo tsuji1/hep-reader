@@ -800,7 +800,7 @@ app.post('/api/save-url', async (req: Request, res: Response) => {
     
     // Create page HTML template with highlight.js
     const customStyles = `
-      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
       <style>
         body { 
           font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
