@@ -798,8 +798,9 @@ app.post('/api/save-url', async (req: Request, res: Response) => {
     const totalPages = contentSections.length;
     console.log(`Split into ${totalPages} pages`);
     
-    // Create page HTML template
+    // Create page HTML template with highlight.js
     const customStyles = `
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-dark.min.css">
       <style>
         body { 
           font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
@@ -812,11 +813,14 @@ app.post('/api/save-url', async (req: Request, res: Response) => {
         }
         img { max-width: 100%; height: auto; display: block; margin: 1em auto; }
         pre { 
-          background: #282c34; 
-          color: #abb2bf;
-          padding: 15px; 
+          padding: 0;
           overflow-x: auto;
           border-radius: 5px;
+          margin: 1em 0;
+        }
+        pre code { 
+          display: block;
+          padding: 15px;
           font-family: 'Consolas', 'Monaco', monospace;
           font-size: 0.9em;
         }
@@ -826,29 +830,12 @@ app.post('/api/save-url', async (req: Request, res: Response) => {
           border-radius: 3px;
           font-family: 'Consolas', 'Monaco', monospace;
         }
-        pre code { 
-          background: transparent; 
-          padding: 0;
-          color: inherit;
-        }
         h1, h2, h3 { color: #2c3e50; }
         a { color: #3498db; }
         blockquote { border-left: 4px solid #3498db; margin: 1em 0; padding-left: 1em; color: #666; }
-        
-        /* Syntax highlighting for common languages */
-        pre.language-c, pre.language-cpp, pre.language-go, pre.language-rust,
-        pre.language-python, pre.language-javascript, pre.language-typescript,
-        pre.language-java, pre.language-kotlin, pre.language-swift { background: #282c34; }
-        
-        pre .keyword { color: #c678dd; font-weight: bold; }
-        pre .string { color: #98c379; }
-        pre .comment { color: #5c6370; font-style: italic; }
-        pre .number { color: #d19a66; }
-        pre .function { color: #61afef; }
-        pre .type { color: #e5c07b; }
-        pre .operator { color: #56b6c2; }
-        pre .builtin { color: #e06c75; }
       </style>
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+      <script>hljs.highlightAll();</script>
     `;
     
     // Save each page
