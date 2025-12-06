@@ -488,7 +488,7 @@ function extractArticleContent(html: string, baseUrl: string): { content: string
   $content.find('*').each((_, el) => {
     const $el = $(el);
     // Keep essential and semantic attributes
-    const allowedAttrs = ['src', 'href', 'alt', 'title', 'lang', 'dir', 'cite', 'datetime'];
+    const allowedAttrs = ['src', 'href', 'alt', 'title', 'lang', 'dir', 'cite', 'datetime', 'class'];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const attrs = Object.keys((el as any).attribs || {});
     attrs.forEach(attr => {
