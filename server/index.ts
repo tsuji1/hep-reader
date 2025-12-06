@@ -484,11 +484,11 @@ function extractArticleContent(html: string, baseUrl: string): { content: string
     }
   });
   
-  // Clean up attributes
+  // Clean up attributes - keep semantic and language attributes
   $content.find('*').each((_, el) => {
     const $el = $(el);
-    // Keep only essential attributes
-    const allowedAttrs = ['src', 'href', 'alt', 'title'];
+    // Keep essential and semantic attributes
+    const allowedAttrs = ['src', 'href', 'alt', 'title', 'lang', 'dir', 'cite', 'datetime'];
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const attrs = Object.keys((el as any).attribs || {});
     attrs.forEach(attr => {
