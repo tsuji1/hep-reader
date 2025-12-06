@@ -1,6 +1,8 @@
 import axios from 'axios'
 import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
 import { Link, useParams } from 'react-router-dom'
+import hljs from 'highlight.js'
+import 'highlight.js/styles/atom-one-dark.css'
 import AiChat from '../components/AiChat'
 import PdfViewer from '../components/PdfViewer'
 import type { Book, Bookmark, Clip, ClipPosition, PageContent, TocItem } from '../types'
@@ -108,6 +110,18 @@ function Reader(): JSX.Element {
       }, 100)
     }
   }, [loading, pages.length, isPdf])
+
+  // Apply syntax highlighting
+  useEffect(() => {
+    if (!loading && !isPdf) {
+      // Use setTimeout to ensure DOM is updated
+      setTimeout(() => {
+        document.querySelectorAll('pre code').forEach((block) => {
+          hljs.highlightElement(block as HTMLElement)
+        })
+      }, 100)
+    }
+  }, [loading, pages, currentPage, viewMode, isPdf])
 
   // Handle scroll to detect current page (only in scroll mode for EPUB)
   useEffect(() => {
