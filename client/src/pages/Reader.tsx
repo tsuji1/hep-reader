@@ -116,7 +116,29 @@ function Reader(): JSX.Element {
     if (!loading && !isPdf) {
       // Use setTimeout to ensure DOM is updated
       setTimeout(() => {
+        // はてなブログなどの独自クラス名に対応
+        document.querySelectorAll('pre.code').forEach((pre) => {
+          if (!pre.querySelector('code')) {
+            const code = document.createElement('code');
+            code.innerHTML = pre.innerHTML;
+            code.className = pre.className;
+            pre.innerHTML = '';
+            pre.appendChild(code);
+          }
+        });
+
         document.querySelectorAll('pre code').forEach((block) => {
+          // クラス名がない場合は自動検出を試みる
+          if (!block.className && block.parentElement?.className) {
+             // 親のpreにクラスがある場合、それを継承する (例: class="code lang-c")
+             block.className = block.parentElement.className;
+          }
+          
+          // lang-xxx を language-xxx に変換
+          if (block.className.includes('lang-') && !block.className.includes('language-')) {
+            block.className = block.className.replace(/lang-([a-zA-Z0-9_-]+)/, 'language-$1');
+          }
+
           hljs.highlightElement(block as HTMLElement)
         })
       }, 100)
