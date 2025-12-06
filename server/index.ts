@@ -834,8 +834,15 @@ app.post('/api/save-url', async (req: Request, res: Response) => {
         a { color: #3498db; }
         blockquote { border-left: 4px solid #3498db; margin: 1em 0; padding-left: 1em; color: #666; }
       </style>
+    `;
+    
+    const highlightScript = `
       <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
-      <script>hljs.highlightAll();</script>
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          hljs.highlightAll();
+        });
+      </script>
     `;
     
     // Save each page
@@ -859,6 +866,7 @@ app.post('/api/save-url', async (req: Request, res: Response) => {
   ${isFirstPage ? '<hr>' : ''}
   ${sectionContent}
   ${pageNum === totalPages ? `<hr><p style="color: #666; font-size: 0.9em;">Original: <a href="${url}" target="_blank">${url}</a></p>` : ''}
+  ${highlightScript}
 </body>
 </html>`;
       
