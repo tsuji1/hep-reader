@@ -580,16 +580,16 @@ function splitContentByHeadings(content, _title) {
     });
     // Get the modified HTML
     const modifiedContent = $.html();
-    // Check if there are any h2 headings
-    const headings = $('h2');
-    if (headings.length === 0) {
-        // No h2 headings, return as single page
+    // Check if there are any h1 or h2 headings
+    const h1Count = $('h1').length;
+    const h2Count = $('h2').length;
+    if (h1Count === 0 && h2Count === 0) {
+        // No headings, return as single page
         return [modifiedContent];
     }
-    // Use regex to split by h2 tags (works regardless of nesting)
-    // This regex captures everything before and after each h2
-    const h2Regex = /(<h2[^>]*>)/gi;
-    const parts = modifiedContent.split(h2Regex);
+    // Split by h1 and h2 tags
+    const headingRegex = /(<h[12][^>]*>)/gi;
+    const parts = modifiedContent.split(headingRegex);
     if (parts.length <= 1) {
         return [modifiedContent];
     }
@@ -597,14 +597,14 @@ function splitContentByHeadings(content, _title) {
     let currentSection = '';
     for (let i = 0; i < parts.length; i++) {
         const part = parts[i];
-        if (h2Regex.test(part) || part.match(/^<h2[^>]*>$/i)) {
-            // This is an h2 opening tag
+        if (part.match(/^<h[12][^>]*>$/i)) {
+            // This is an h1 or h2 opening tag
             // Save previous section if it has meaningful content
             const trimmedSection = currentSection.replace(/<[^>]*>/g, '').trim();
             if (trimmedSection.length > 20) {
                 sections.push(currentSection);
             }
-            // Start new section with this h2 tag
+            // Start new section with this heading tag
             currentSection = part;
         }
         else {
