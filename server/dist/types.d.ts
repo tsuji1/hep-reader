@@ -8,6 +8,7 @@ export interface Book {
     language: string;
     book_type: 'epub' | 'pdf' | 'website';
     source_url: string | null;
+    ai_context: string | null;
     created_at: string;
     updated_at: string;
     current_page?: number;
@@ -21,6 +22,7 @@ export interface Tag {
 export interface BookInput {
     title?: string;
     language?: string;
+    ai_context?: string;
 }
 export interface WebsiteMetadata {
     title: string;

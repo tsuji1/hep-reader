@@ -16,7 +16,7 @@ export declare function addWebsiteBook(id: string, title: string, sourceUrl: str
 export declare function getAllBooks(): Book[];
 export declare function getBook(id: string): Book | undefined;
 export declare function deleteBook(id: string): void;
-export declare function updateBook(id: string, { title, language }: BookInput): Book | null;
+export declare function updateBook(id: string, { title, language, ai_context }: BookInput): Book | null;
 export declare function addBookmark(bookId: string, pageNum: number, note?: string): {
     id: string;
     bookId: string;
@@ -43,6 +43,18 @@ export declare function deleteTag(id: string): void;
 export declare function getBookTags(bookId: string): TagRecord[];
 export declare function addTagToBook(bookId: string, tagId: string): void;
 export declare function removeTagFromBook(bookId: string, tagId: string): void;
+export interface AiSetting {
+    provider: string;
+    api_key: string;
+    model: string | null;
+}
+export declare function getAiSettings(): AiSetting[];
+export declare function getAiSetting(provider: string): AiSetting | undefined;
+export declare function saveAiSetting(provider: string, apiKey: string, model?: string | null): {
+    provider: string;
+    model: string | null;
+};
+export declare function deleteAiSetting(provider: string): void;
 declare const _default: {
     addBook: typeof addBook;
     addWebsiteBook: typeof addWebsiteBook;
@@ -66,6 +78,10 @@ declare const _default: {
     getBookTags: typeof getBookTags;
     addTagToBook: typeof addTagToBook;
     removeTagFromBook: typeof removeTagFromBook;
+    getAiSettings: typeof getAiSettings;
+    getAiSetting: typeof getAiSetting;
+    saveAiSetting: typeof saveAiSetting;
+    deleteAiSetting: typeof deleteAiSetting;
 };
 export default _default;
 //# sourceMappingURL=database.d.ts.map

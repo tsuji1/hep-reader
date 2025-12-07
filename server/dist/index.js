@@ -63,6 +63,113 @@ const ROOT_DIR = path_1.default.join(__dirname, '../..');
 app.use((0, cors_1.default)());
 app.use(express_1.default.json({ limit: '50mb' }));
 app.use(express_1.default.urlencoded({ limit: '50mb', extended: true }));
+async function callAi(prompt) {
+    // Try to get any configured AI provider
+    const settings = database_1.default.getAiSettings();
+    if (settings.length === 0)
+        return null;
+    // Prefer gemini > claude > openai (gemini is usually faster)
+    const providerOrder = ['gemini', 'claude', 'openai'];
+    const setting = providerOrder
+        .map(p => settings.find(s => s.provider === p))
+        .find(s => s && s.api_key);
+    if (!setting)
+        return null;
+    const { provider, api_key: apiKey, model } = setting;
+    try {
+        if (provider === 'openai') {
+            const modelName = model || 'gpt-4o-mini';
+            const apiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: modelName,
+                    messages: [{ role: 'user', content: prompt }],
+                    max_tokens: 500
+                })
+            });
+            const data = await apiRes.json();
+            return data.choices?.[0]?.message?.content || null;
+        }
+        else if (provider === 'claude') {
+            const modelName = model || 'claude-sonnet-4-20250514';
+            const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01'
+                },
+                body: JSON.stringify({
+                    model: modelName,
+                    max_tokens: 500,
+                    messages: [{ role: 'user', content: prompt }]
+                })
+            });
+            const data = await apiRes.json();
+            return data.content?.[0]?.text || null;
+        }
+        else if (provider === 'gemini') {
+            const modelName = model || 'gemini-2.0-flash';
+            const apiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{ parts: [{ text: prompt }] }]
+                })
+            });
+            const data = await apiRes.json();
+            return data.candidates?.[0]?.content?.parts?.[0]?.text || null;
+        }
+    }
+    catch (error) {
+        console.error('AI call error:', error);
+    }
+    return null;
+}
+// Auto-suggest tags based on content
+async function suggestTags(title, content) {
+    const allTags = database_1.default.getAllTags();
+    if (allTags.length === 0)
+        return [];
+    const tagNames = allTags.map(t => t.name).join(', ');
+    const prompt = `以下の本/記事のタイトルと内容から、最も適切なタグを選んでください。
+タグは必ず以下のリストから選び、カンマ区切りで返してください（最大3つ）。
+該当するタグがなければ空で返してください。
+
+利用可能なタグ: ${tagNames}
+
+タイトル: ${title}
+内容（先頭500文字）: ${content.substring(0, 500)}
+
+選んだタグ（カンマ区切り）:`;
+    const response = await callAi(prompt);
+    if (!response)
+        return [];
+    // Parse response to extract tag names
+    const suggestedNames = response
+        .split(/[,、]/)
+        .map(s => s.trim())
+        .filter(s => s.length > 0);
+    // Return only valid tag IDs
+    return allTags
+        .filter(t => suggestedNames.some(name => t.name.toLowerCase() === name.toLowerCase() ||
+        name.toLowerCase().includes(t.name.toLowerCase())))
+        .map(t => t.id);
+}
+// Generate clip description
+async function generateClipDescription(imageContext, bookTitle) {
+    const prompt = `以下の本からキャプチャした画像の簡潔な説明を日本語で1-2文で作成してください。
+本のタイトル: ${bookTitle}
+画像の文脈/周辺テキスト: ${imageContext.substring(0, 300)}
+
+説明:`;
+    const response = await callAi(prompt);
+    return response || '';
+}
 app.use('/uploads', express_1.default.static(path_1.default.join(ROOT_DIR, 'uploads')));
 app.use('/converted', express_1.default.static(path_1.default.join(ROOT_DIR, 'converted')));
 // Serve static files in production
@@ -203,6 +310,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
             fs_1.default.unlinkSync(filePath);
             // Save to database (PDF has 1 "page" in our system, actual pages handled by viewer)
             database_1.default.addBook(bookId, bookTitle, originalFilename, 1, 'pdf');
+            // Auto-suggest tags (async, don't wait)
+            suggestTags(bookTitle, originalFilename).then(tagIds => {
+                tagIds.forEach(tagId => database_1.default.addTagToBook(bookId, tagId));
+            }).catch(e => console.error('Auto-tag error:', e));
             return res.json({
                 success: true,
                 bookId,
@@ -233,6 +344,10 @@ app.post('/api/upload', upload.single('file'), async (req, res) => {
         const pages = splitIntoPages(htmlContent, bookDir);
         // Save book info to database
         database_1.default.addBook(bookId, bookTitle, originalFilename, pages.length, 'epub');
+        // Auto-suggest tags based on content (async, don't wait)
+        suggestTags(bookTitle, htmlContent).then(tagIds => {
+            tagIds.forEach(tagId => database_1.default.addTagToBook(bookId, tagId));
+        }).catch(e => console.error('Auto-tag error:', e));
         // Clean up original epub
         fs_1.default.unlinkSync(epubPath);
         res.json({
@@ -310,10 +425,53 @@ function extractMetadata(html, baseUrl) {
 function extractArticleContent(html, baseUrl) {
     const $ = cheerio.load(html);
     const images = [];
-    // Remove unwanted elements
-    $('script, style, nav, header, footer, aside, .ads, .advertisement, .sidebar, .menu, .navigation, .comment, .comments, #comments, .social-share, .share-buttons, .related-posts, iframe, noscript').remove();
-    // Try to find main content
-    let $content = $('article').first();
+    // Detect site type for specialized handling
+    const isHatenaBlog = baseUrl.includes('hatenablog.com') ||
+        baseUrl.includes('hatenablog.jp') ||
+        baseUrl.includes('hatena.ne.jp') ||
+        $('.hatena-module').length > 0 ||
+        $('#blog-title').length > 0;
+    // Remove unwanted elements (be careful with hatena-specific elements)
+    const removeSelectors = [
+        'script', 'style', 'nav', 'header', 'footer', 'aside',
+        '.ads', '.advertisement', '.sidebar', '.menu', '.navigation',
+        '.comment', '.comments', '#comments', '.social-share', '.share-buttons',
+        '.related-posts', 'iframe', 'noscript'
+    ];
+    // Add Hatena Blog specific selectors to remove
+    if (isHatenaBlog) {
+        removeSelectors.push('.hatena-module', // Sidebar modules
+        '.hatena-module-title', '.hatena-urllist', // Related articles list
+        '#box2', '#box2-inner', // Sidebar container
+        '.entry-footer-section', // Article footer (social buttons, etc)
+        '.entry-footer-modules', '.hatena-star-container', // Hatena stars
+        '.hatena-bookmark-button-frame', '.subscribe-button', // Subscribe button
+        '.reader-button', '.entry-footer-html', '.entry-categories', // Keep categories but remove from extraction
+        '.entry-see-more', // "Read more" links
+        '.page-footer', // Page footer
+        '.ad-label', '.ad-content', // Ads
+        '.google-afc-user-container', '#google_ads_iframe', '.hatena-asin-detail', // Amazon affiliate links
+        '.sentry-error-embed', '.entry-reactions', // Reactions
+        '.customized-footer');
+    }
+    $(removeSelectors.join(', ')).remove();
+    // Try to find main content with Hatena Blog priority
+    let $content = $('');
+    if (isHatenaBlog) {
+        // Hatena Blog specific: look for the entry content first
+        $content = $('.entry-content').first();
+        if ($content.length === 0)
+            $content = $('.hatenablog-entry').first();
+        if ($content.length === 0)
+            $content = $('.entry').first();
+        if ($content.length === 0)
+            $content = $('#main-inner').first();
+        if ($content.length === 0)
+            $content = $('#main').first();
+    }
+    // Generic selectors as fallback
+    if ($content.length === 0)
+        $content = $('article').first();
     if ($content.length === 0)
         $content = $('main').first();
     if ($content.length === 0)
@@ -325,14 +483,31 @@ function extractArticleContent(html, baseUrl) {
     // Process images - collect and update src
     $content.find('img').each((_, img) => {
         const $img = $(img);
-        let src = $img.attr('src') || $img.attr('data-src') || $img.attr('data-lazy-src');
+        // Check multiple sources for lazy-loaded images
+        let src = $img.attr('src') ||
+            $img.attr('data-src') ||
+            $img.attr('data-lazy-src') ||
+            $img.attr('data-original');
+        // Skip tiny placeholder images (often 1x1 pixels for tracking)
+        const width = parseInt($img.attr('width') || '0', 10);
+        const height = parseInt($img.attr('height') || '0', 10);
+        if ((width > 0 && width < 10) || (height > 0 && height < 10)) {
+            $img.remove();
+            return;
+        }
         if (src) {
+            // Skip data URLs and invalid sources
+            if (src.startsWith('data:') || src === '' || src === '#') {
+                $img.remove();
+                return;
+            }
             try {
                 const absoluteUrl = new URL(src, baseUrl).href;
                 images.push(absoluteUrl);
                 $img.attr('src', `media/${images.length - 1}.img`);
                 $img.removeAttr('data-src');
                 $img.removeAttr('data-lazy-src');
+                $img.removeAttr('data-original');
                 $img.removeAttr('srcset');
                 $img.removeAttr('loading');
             }
@@ -342,11 +517,19 @@ function extractArticleContent(html, baseUrl) {
             }
         }
     });
-    // Clean up attributes
+    // Clean up attributes - keep semantic, language, and code-related attributes
     $content.find('*').each((_, el) => {
         const $el = $(el);
-        // Keep only essential attributes
-        const allowedAttrs = ['src', 'href', 'alt', 'title'];
+        const tagName = el.type === 'tag' ? el.name?.toLowerCase() : '';
+        // Keep more attributes for code blocks (important for syntax highlighting)
+        const isCodeElement = tagName === 'code' || tagName === 'pre' || $el.closest('pre').length > 0;
+        // Essential attributes for different element types
+        const allowedAttrs = ['src', 'href', 'alt', 'title', 'lang', 'dir', 'cite', 'datetime'];
+        // Always keep class for styling and language detection
+        if (isCodeElement) {
+            // For code elements, keep class for syntax highlighting
+            allowedAttrs.push('class', 'data-lang');
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const attrs = Object.keys(el.attribs || {});
         attrs.forEach(attr => {
@@ -355,9 +538,13 @@ function extractArticleContent(html, baseUrl) {
             }
         });
     });
-    // Remove empty elements
+    // Remove empty elements (but be careful with code blocks)
     $content.find('div, span, p').each((_, el) => {
         const $el = $(el);
+        // Don't remove elements that might be code-related or contain code blocks
+        if ($el.closest('pre').length > 0 || $el.find('pre').length > 0 || $el.find('code').length > 0) {
+            return;
+        }
         if ($el.text().trim() === '' && $el.find('img').length === 0) {
             $el.remove();
         }
@@ -452,6 +639,115 @@ function splitContentByHeadings(content, _title) {
     }
     return sections;
 }
+// FreshRSS integration - receive article from FreshRSS share button
+// FreshRSS Share URL format: http://your-server:10300/api/freshrss/share?url=~url~&title=~title~
+app.get('/api/freshrss/share', async (req, res) => {
+    try {
+        const { url, title } = req.query;
+        if (!url || typeof url !== 'string') {
+            return res.status(400).send(`
+        <html>
+        <head><meta charset="UTF-8"><title>Error</title></head>
+        <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+          <h1>❌ URLが必要です</h1>
+          <p>FreshRSSの共有設定を確認してください</p>
+        </body>
+        </html>
+      `);
+        }
+        // Validate URL
+        let parsedUrl;
+        try {
+            parsedUrl = new URL(url);
+            if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+                throw new Error('Invalid protocol');
+            }
+        }
+        catch {
+            return res.status(400).send(`
+        <html>
+        <head><meta charset="UTF-8"><title>Error</title></head>
+        <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+          <h1>❌ 無効なURLです</h1>
+          <p>${url}</p>
+        </body>
+        </html>
+      `);
+        }
+        // Show processing page first
+        const processingHtml = `
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>保存中... | EPUB Viewer</title>
+        <style>
+          body { font-family: sans-serif; padding: 40px; text-align: center; background: #f5f5f5; }
+          .container { max-width: 600px; margin: 0 auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+          .spinner { width: 50px; height: 50px; border: 4px solid #e2e8f0; border-top-color: #667eea; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 20px; }
+          @keyframes spin { to { transform: rotate(360deg); } }
+          h1 { color: #333; margin-bottom: 10px; }
+          p { color: #666; }
+        </style>
+      </head>
+      <body>
+        <div class="container">
+          <div class="spinner"></div>
+          <h1>📚 記事を保存中...</h1>
+          <p>${title || url}</p>
+        </div>
+        <script>
+          fetch('/api/save-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: '${url.replace(/'/g, "\\'")}' })
+          })
+          .then(res => res.json())
+          .then(data => {
+            if (data.success) {
+              document.body.innerHTML = \`
+                <div class="container" style="max-width: 600px; margin: 40px auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center;">
+                  <h1 style="color: #22c55e;">✅ 保存しました！</h1>
+                  <p style="color: #333; font-size: 1.1em; margin: 20px 0;">\${data.title}</p>
+                  <p style="color: #666;">全 \${data.totalPages} ページ</p>
+                  <div style="margin-top: 30px;">
+                    <a href="/reader/\${data.bookId}" style="display: inline-block; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 8px; margin-right: 10px;">📖 読む</a>
+                    <a href="/" style="display: inline-block; padding: 12px 24px; background: #e2e8f0; color: #333; text-decoration: none; border-radius: 8px;">📚 ライブラリ</a>
+                  </div>
+                  <p style="margin-top: 30px; color: #999; font-size: 0.9em;">このウィンドウは閉じても大丈夫です</p>
+                </div>
+              \`;
+            } else {
+              throw new Error(data.error || 'Failed to save');
+            }
+          })
+          .catch(err => {
+            document.body.innerHTML = \`
+              <div class="container" style="max-width: 600px; margin: 40px auto; background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); text-align: center;">
+                <h1 style="color: #ef4444;">❌ 保存に失敗しました</h1>
+                <p style="color: #666;">\${err.message}</p>
+                <a href="/" style="display: inline-block; margin-top: 20px; padding: 12px 24px; background: #667eea; color: white; text-decoration: none; border-radius: 8px;">ライブラリへ</a>
+              </div>
+            \`;
+          });
+        </script>
+      </body>
+      </html>
+    `;
+        res.send(processingHtml);
+    }
+    catch (error) {
+        console.error('FreshRSS share error:', error);
+        res.status(500).send(`
+      <html>
+      <head><meta charset="UTF-8"><title>Error</title></head>
+      <body style="font-family: sans-serif; padding: 40px; text-align: center;">
+        <h1>❌ エラーが発生しました</h1>
+        <p>${error.message}</p>
+      </body>
+      </html>
+    `);
+    }
+});
 // Save website URL
 app.post('/api/save-url', async (req, res) => {
     try {
@@ -515,8 +811,9 @@ app.post('/api/save-url', async (req, res) => {
         const contentSections = splitContentByHeadings(fixedContent, metadata.title);
         const totalPages = contentSections.length;
         console.log(`Split into ${totalPages} pages`);
-        // Create page HTML template
+        // Create page HTML template with highlight.js
         const customStyles = `
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
       <style>
         body { 
           font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
@@ -529,20 +826,35 @@ app.post('/api/save-url', async (req, res) => {
         }
         img { max-width: 100%; height: auto; display: block; margin: 1em auto; }
         pre { 
-          background: #f4f4f4; 
-          padding: 15px; 
+          padding: 0;
           overflow-x: auto;
           border-radius: 5px;
+          margin: 1em 0;
+        }
+        pre code { 
+          display: block;
+          padding: 15px;
+          font-family: 'Consolas', 'Monaco', monospace;
+          font-size: 0.9em;
         }
         code { 
           background: #f4f4f4; 
           padding: 2px 6px;
           border-radius: 3px;
+          font-family: 'Consolas', 'Monaco', monospace;
         }
         h1, h2, h3 { color: #2c3e50; }
         a { color: #3498db; }
         blockquote { border-left: 4px solid #3498db; margin: 1em 0; padding-left: 1em; color: #666; }
       </style>
+    `;
+        const highlightScript = `
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          hljs.highlightAll();
+        });
+      </script>
     `;
         // Save each page
         const pageFiles = [];
@@ -564,6 +876,7 @@ app.post('/api/save-url', async (req, res) => {
   ${isFirstPage ? '<hr>' : ''}
   ${sectionContent}
   ${pageNum === totalPages ? `<hr><p style="color: #666; font-size: 0.9em;">Original: <a href="${url}" target="_blank">${url}</a></p>` : ''}
+  ${highlightScript}
 </body>
 </html>`;
             const pageFile = `page-${pageNum}.html`;
@@ -576,6 +889,15 @@ app.post('/api/save-url', async (req, res) => {
         fs_1.default.writeFileSync(path_1.default.join(bookDir, 'metadata.json'), JSON.stringify({ ...metadata, sourceUrl: url, savedAt: new Date().toISOString() }));
         // Save to database
         database_1.default.addWebsiteBook(bookId, metadata.title, url, totalPages);
+        // Auto-suggest tags based on content (async, don't wait)
+        // Add 'web' tag automatically for websites
+        const webTag = database_1.default.getAllTags().find(t => t.name === 'web');
+        if (webTag) {
+            database_1.default.addTagToBook(bookId, webTag.id);
+        }
+        suggestTags(metadata.title, fixedContent).then(tagIds => {
+            tagIds.forEach(tagId => database_1.default.addTagToBook(bookId, tagId));
+        }).catch(e => console.error('Auto-tag error:', e));
         res.json({
             success: true,
             bookId,
@@ -789,6 +1111,68 @@ app.delete('/api/clips/:clipId', (req, res) => {
         res.status(500).json({ error: error.message });
     }
 });
+// Generate clip description using AI
+app.post('/api/ai/generate-clip-description', async (req, res) => {
+    try {
+        const { bookTitle, pageContent } = req.body;
+        if (!bookTitle || !pageContent) {
+            return res.status(400).json({ error: 'bookTitle and pageContent are required' });
+        }
+        const description = await generateClipDescription(pageContent, bookTitle);
+        res.json({ description });
+    }
+    catch (error) {
+        console.error('Generate description error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+// Auto-tag all existing books
+app.post('/api/ai/auto-tag-all', async (req, res) => {
+    try {
+        const { force } = req.body;
+        const books = database_1.default.getAllBooks();
+        const results = [];
+        for (const book of books) {
+            // Skip if book already has tags (unless force is true)
+            const existingTags = database_1.default.getBookTags(book.id);
+            if (!force && existingTags.length > 0) {
+                results.push({ bookId: book.id, title: book.title, tags: existingTags.map(t => t.name) });
+                continue;
+            }
+            // Get content for tag suggestion
+            let content = book.title;
+            const bookDir = path_1.default.join(convertedDir, book.id);
+            const pagesDir = path_1.default.join(bookDir, 'pages');
+            // Try to read first page content
+            if (fs_1.default.existsSync(path_1.default.join(pagesDir, 'page-1.html'))) {
+                try {
+                    const pageContent = fs_1.default.readFileSync(path_1.default.join(pagesDir, 'page-1.html'), 'utf8');
+                    content = pageContent.substring(0, 1000);
+                }
+                catch (e) {
+                    // Ignore read errors
+                }
+            }
+            // Suggest and add tags
+            const tagIds = await suggestTags(book.title, content);
+            const addedTags = [];
+            for (const tagId of tagIds) {
+                database_1.default.addTagToBook(book.id, tagId);
+                const tag = database_1.default.getAllTags().find(t => t.id === tagId);
+                if (tag)
+                    addedTags.push(tag.name);
+            }
+            results.push({ bookId: book.id, title: book.title, tags: addedTags });
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 500));
+        }
+        res.json({ success: true, results });
+    }
+    catch (error) {
+        console.error('Auto-tag all error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 // Reading progress
 app.get('/api/books/:bookId/progress', (req, res) => {
     try {
@@ -830,8 +1214,8 @@ app.delete('/api/books/:bookId', (req, res) => {
 app.patch('/api/books/:bookId', (req, res) => {
     try {
         const { bookId } = req.params;
-        const { title, language } = req.body;
-        const updated = database_1.default.updateBook(bookId, { title, language });
+        const { title, language, ai_context } = req.body;
+        const updated = database_1.default.updateBook(bookId, { title, language, ai_context });
         if (!updated) {
             return res.status(404).json({ error: 'Book not found' });
         }
@@ -888,6 +1272,12 @@ app.post('/api/tags', (req, res) => {
 // Delete tag
 app.delete('/api/tags/:tagId', (req, res) => {
     try {
+        // Check if it's the protected "積読" tag
+        const tags = database_1.default.getAllTags();
+        const tagToDelete = tags.find(t => t.id === req.params.tagId);
+        if (tagToDelete && tagToDelete.name === '積読') {
+            return res.status(400).json({ error: '積読タグは削除できません' });
+        }
         database_1.default.deleteTag(req.params.tagId);
         res.json({ success: true });
     }
@@ -1134,6 +1524,142 @@ app.get('/api/books/:bookId/cover', async (req, res) => {
     }
     else {
         res.status(404).json({ error: 'No cover found' });
+    }
+});
+// ==================== AI Settings APIs ====================
+// Get all AI settings (hides API keys)
+app.get('/api/ai/settings', (_req, res) => {
+    try {
+        const settings = database_1.default.getAiSettings();
+        // Hide actual API keys, just show if configured
+        const safeSettings = settings.map((s) => ({
+            provider: s.provider,
+            model: s.model,
+            configured: !!s.api_key
+        }));
+        res.json(safeSettings);
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// Save AI setting
+app.post('/api/ai/settings', (req, res) => {
+    try {
+        const { provider, apiKey, model } = req.body;
+        if (!provider || !apiKey) {
+            return res.status(400).json({ error: 'provider and apiKey are required' });
+        }
+        const validProviders = ['gemini', 'claude', 'openai'];
+        if (!validProviders.includes(provider)) {
+            return res.status(400).json({ error: 'Invalid provider. Use: gemini, claude, openai' });
+        }
+        database_1.default.saveAiSetting(provider, apiKey, model);
+        res.json({ success: true, provider, model });
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// Delete AI setting
+app.delete('/api/ai/settings/:provider', (req, res) => {
+    try {
+        database_1.default.deleteAiSetting(req.params.provider);
+        res.json({ success: true });
+    }
+    catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+// Chat with AI
+app.post('/api/ai/chat', async (req, res) => {
+    try {
+        const { provider, message, context } = req.body;
+        if (!provider || !message) {
+            return res.status(400).json({ error: 'provider and message are required' });
+        }
+        const setting = database_1.default.getAiSetting(provider);
+        if (!setting || !setting.api_key) {
+            return res.status(400).json({ error: `${provider} API key is not configured` });
+        }
+        const apiKey = setting.api_key;
+        let response;
+        // Build prompt with context
+        const systemPrompt = context
+            ? `あなたは読書アシスタントです。ユーザーが読んでいる本の内容について質問に答えてください。\n\n現在の本の内容:\n${context}`
+            : 'あなたは読書アシスタントです。ユーザーの質問に答えてください。';
+        if (provider === 'openai') {
+            const model = setting.model || 'gpt-4o-mini';
+            const apiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model,
+                    messages: [
+                        { role: 'system', content: systemPrompt },
+                        { role: 'user', content: message }
+                    ],
+                    max_tokens: 2000
+                })
+            });
+            const data = await apiRes.json();
+            if (data.error) {
+                throw new Error(data.error.message);
+            }
+            response = data.choices?.[0]?.message?.content || 'No response';
+        }
+        else if (provider === 'claude') {
+            const model = setting.model || 'claude-sonnet-4-20250514';
+            const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': apiKey,
+                    'anthropic-version': '2023-06-01'
+                },
+                body: JSON.stringify({
+                    model,
+                    max_tokens: 2000,
+                    system: systemPrompt,
+                    messages: [
+                        { role: 'user', content: message }
+                    ]
+                })
+            });
+            const data = await apiRes.json();
+            if (data.error) {
+                throw new Error(data.error.message);
+            }
+            response = data.content?.[0]?.text || 'No response';
+        }
+        else if (provider === 'gemini') {
+            const model = setting.model || 'gemini-2.0-flash';
+            const apiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    contents: [{
+                            parts: [{ text: `${systemPrompt}\n\nユーザーの質問: ${message}` }]
+                        }]
+                })
+            });
+            const data = await apiRes.json();
+            if (data.error) {
+                throw new Error(data.error.message);
+            }
+            response = data.candidates?.[0]?.content?.parts?.[0]?.text || 'No response';
+        }
+        else {
+            return res.status(400).json({ error: 'Unknown provider' });
+        }
+        res.json({ response });
+    }
+    catch (error) {
+        console.error('AI chat error:', error);
+        res.status(500).json({ error: error.message });
     }
 });
 // Serve React app for all other routes in production

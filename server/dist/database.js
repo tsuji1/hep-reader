@@ -25,6 +25,10 @@ exports.deleteTag = deleteTag;
 exports.getBookTags = getBookTags;
 exports.addTagToBook = addTagToBook;
 exports.removeTagFromBook = removeTagFromBook;
+exports.getAiSettings = getAiSettings;
+exports.getAiSetting = getAiSetting;
+exports.saveAiSetting = saveAiSetting;
+exports.deleteAiSetting = deleteAiSetting;
 const better_sqlite3_1 = __importDefault(require("better-sqlite3"));
 const fs_1 = __importDefault(require("fs"));
 const path_1 = __importDefault(require("path"));
@@ -124,6 +128,13 @@ try {
 catch (e) {
     // Column already exists
 }
+// Migration: Add ai_context column for book-specific AI context
+try {
+    db.exec(`ALTER TABLE books ADD COLUMN ai_context TEXT`);
+}
+catch (e) {
+    // Column already exists
+}
 // Tags table
 db.exec(`
   CREATE TABLE IF NOT EXISTS tags (
@@ -142,6 +153,27 @@ db.exec(`
   
   CREATE INDEX IF NOT EXISTS idx_book_tags_book ON book_tags(book_id);
   CREATE INDEX IF NOT EXISTS idx_book_tags_tag ON book_tags(tag_id);
+`);
+// Initialize default "積読" tag
+try {
+    const existingTag = db.prepare('SELECT id FROM tags WHERE name = ?').get('積読');
+    if (!existingTag) {
+        const { v4: uuidv4Init } = require('uuid');
+        db.prepare('INSERT INTO tags (id, name, color) VALUES (?, ?, ?)').run(uuidv4Init(), '積読', '#f59e0b');
+    }
+}
+catch (e) {
+    // Tag already exists
+}
+// AI Settings table
+db.exec(`
+  CREATE TABLE IF NOT EXISTS ai_settings (
+    provider TEXT PRIMARY KEY,
+    api_key TEXT NOT NULL,
+    model TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
 `);
 // Books
 function addBook(id, title, originalFilename, totalPages, bookType = 'epub') {
@@ -182,7 +214,7 @@ function deleteBook(id) {
     const stmt = db.prepare('DELETE FROM books WHERE id = ?');
     stmt.run(id);
 }
-function updateBook(id, { title, language }) {
+function updateBook(id, { title, language, ai_context }) {
     const updates = [];
     const values = [];
     if (title !== undefined) {
@@ -192,6 +224,10 @@ function updateBook(id, { title, language }) {
     if (language !== undefined) {
         updates.push('language = ?');
         values.push(language);
+    }
+    if (ai_context !== undefined) {
+        updates.push('ai_context = ?');
+        values.push(ai_context);
     }
     if (updates.length === 0)
         return null;
@@ -321,6 +357,30 @@ function removeTagFromBook(bookId, tagId) {
     const stmt = db.prepare('DELETE FROM book_tags WHERE book_id = ? AND tag_id = ?');
     stmt.run(bookId, tagId);
 }
+function getAiSettings() {
+    const stmt = db.prepare('SELECT provider, api_key, model FROM ai_settings');
+    return stmt.all();
+}
+function getAiSetting(provider) {
+    const stmt = db.prepare('SELECT provider, api_key, model FROM ai_settings WHERE provider = ?');
+    return stmt.get(provider);
+}
+function saveAiSetting(provider, apiKey, model = null) {
+    const stmt = db.prepare(`
+    INSERT INTO ai_settings (provider, api_key, model, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(provider) DO UPDATE SET
+      api_key = excluded.api_key,
+      model = excluded.model,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+    stmt.run(provider, apiKey, model);
+    return { provider, model };
+}
+function deleteAiSetting(provider) {
+    const stmt = db.prepare('DELETE FROM ai_settings WHERE provider = ?');
+    stmt.run(provider);
+}
 // Default export for backward compatibility
 exports.default = {
     addBook,
@@ -344,6 +404,10 @@ exports.default = {
     deleteTag,
     getBookTags,
     addTagToBook,
-    removeTagFromBook
+    removeTagFromBook,
+    getAiSettings,
+    getAiSetting,
+    saveAiSetting,
+    deleteAiSetting
 };
 //# sourceMappingURL=database.js.map

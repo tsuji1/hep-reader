@@ -454,11 +454,64 @@ function extractArticleContent(html: string, baseUrl: string): { content: string
   const $ = cheerio.load(html);
   const images: string[] = [];
   
-  // Remove unwanted elements
-  $('script, style, nav, header, footer, aside, .ads, .advertisement, .sidebar, .menu, .navigation, .comment, .comments, #comments, .social-share, .share-buttons, .related-posts, iframe, noscript').remove();
+  // Detect site type for specialized handling
+  const isHatenaBlog = baseUrl.includes('hatenablog.com') || 
+                       baseUrl.includes('hatenablog.jp') || 
+                       baseUrl.includes('hatena.ne.jp') ||
+                       $('.hatena-module').length > 0 ||
+                       $('#blog-title').length > 0;
   
-  // Try to find main content
-  let $content = $('article').first();
+  // Remove unwanted elements (be careful with hatena-specific elements)
+  const removeSelectors = [
+    'script', 'style', 'nav', 'header', 'footer', 'aside',
+    '.ads', '.advertisement', '.sidebar', '.menu', '.navigation',
+    '.comment', '.comments', '#comments', '.social-share', '.share-buttons',
+    '.related-posts', 'iframe', 'noscript'
+  ];
+  
+  // Add Hatena Blog specific selectors to remove
+  if (isHatenaBlog) {
+    removeSelectors.push(
+      '.hatena-module', // Sidebar modules
+      '.hatena-module-title',
+      '.hatena-urllist', // Related articles list
+      '#box2', '#box2-inner', // Sidebar container
+      '.entry-footer-section', // Article footer (social buttons, etc)
+      '.entry-footer-modules',
+      '.hatena-star-container', // Hatena stars
+      '.hatena-bookmark-button-frame',
+      '.subscribe-button', // Subscribe button
+      '.reader-button',
+      '.entry-footer-html',
+      '.entry-categories', // Keep categories but remove from extraction
+      '.entry-see-more', // "Read more" links
+      '.page-footer', // Page footer
+      '.ad-label', '.ad-content', // Ads
+      '.google-afc-user-container',
+      '#google_ads_iframe',
+      '.hatena-asin-detail', // Amazon affiliate links
+      '.sentry-error-embed',
+      '.entry-reactions', // Reactions
+      '.customized-footer'
+    );
+  }
+  
+  $(removeSelectors.join(', ')).remove();
+  
+  // Try to find main content with Hatena Blog priority
+  let $content = $('');
+  
+  if (isHatenaBlog) {
+    // Hatena Blog specific: look for the entry content first
+    $content = $('.entry-content').first();
+    if ($content.length === 0) $content = $('.hatenablog-entry').first();
+    if ($content.length === 0) $content = $('.entry').first();
+    if ($content.length === 0) $content = $('#main-inner').first();
+    if ($content.length === 0) $content = $('#main').first();
+  }
+  
+  // Generic selectors as fallback
+  if ($content.length === 0) $content = $('article').first();
   if ($content.length === 0) $content = $('main').first();
   if ($content.length === 0) $content = $('[role="main"]').first();
   if ($content.length === 0) $content = $('.post-content, .article-content, .entry-content, .content, #content').first();
@@ -467,14 +520,34 @@ function extractArticleContent(html: string, baseUrl: string): { content: string
   // Process images - collect and update src
   $content.find('img').each((_, img) => {
     const $img = $(img);
-    let src = $img.attr('src') || $img.attr('data-src') || $img.attr('data-lazy-src');
+    // Check multiple sources for lazy-loaded images
+    let src = $img.attr('src') || 
+              $img.attr('data-src') || 
+              $img.attr('data-lazy-src') ||
+              $img.attr('data-original');
+    
+    // Skip tiny placeholder images (often 1x1 pixels for tracking)
+    const width = parseInt($img.attr('width') || '0', 10);
+    const height = parseInt($img.attr('height') || '0', 10);
+    if ((width > 0 && width < 10) || (height > 0 && height < 10)) {
+      $img.remove();
+      return;
+    }
+    
     if (src) {
+      // Skip data URLs and invalid sources
+      if (src.startsWith('data:') || src === '' || src === '#') {
+        $img.remove();
+        return;
+      }
+      
       try {
         const absoluteUrl = new URL(src, baseUrl).href;
         images.push(absoluteUrl);
         $img.attr('src', `media/${images.length - 1}.img`);
         $img.removeAttr('data-src');
         $img.removeAttr('data-lazy-src');
+        $img.removeAttr('data-original');
         $img.removeAttr('srcset');
         $img.removeAttr('loading');
       } catch {
@@ -484,11 +557,23 @@ function extractArticleContent(html: string, baseUrl: string): { content: string
     }
   });
   
-  // Clean up attributes - keep semantic and language attributes
+  // Clean up attributes - keep semantic, language, and code-related attributes
   $content.find('*').each((_, el) => {
     const $el = $(el);
-    // Keep essential and semantic attributes
-    const allowedAttrs = ['src', 'href', 'alt', 'title', 'lang', 'dir', 'cite', 'datetime', 'class'];
+    const tagName = el.type === 'tag' ? (el as cheerio.TagElement).name?.toLowerCase() : '';
+    
+    // Keep more attributes for code blocks (important for syntax highlighting)
+    const isCodeElement = tagName === 'code' || tagName === 'pre' || $el.closest('pre').length > 0;
+    
+    // Essential attributes for different element types
+    const allowedAttrs = ['src', 'href', 'alt', 'title', 'lang', 'dir', 'cite', 'datetime'];
+    
+    // Always keep class for styling and language detection
+    if (isCodeElement) {
+      // For code elements, keep class for syntax highlighting
+      allowedAttrs.push('class', 'data-lang');
+    }
+    
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const attrs = Object.keys((el as any).attribs || {});
     attrs.forEach(attr => {
@@ -498,9 +583,13 @@ function extractArticleContent(html: string, baseUrl: string): { content: string
     });
   });
   
-  // Remove empty elements
+  // Remove empty elements (but be careful with code blocks)
   $content.find('div, span, p').each((_, el) => {
     const $el = $(el);
+    // Don't remove elements that might be code-related or contain code blocks
+    if ($el.closest('pre').length > 0 || $el.find('pre').length > 0 || $el.find('code').length > 0) {
+      return;
+    }
     if ($el.text().trim() === '' && $el.find('img').length === 0) {
       $el.remove();
     }
