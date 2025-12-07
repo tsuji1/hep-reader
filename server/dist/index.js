@@ -425,66 +425,45 @@ function extractMetadata(html, baseUrl) {
 function extractArticleContent(html, baseUrl) {
     const $ = cheerio.load(html);
     const images = [];
-    // Detect site type for specialized handling
-    const isHatenaBlog = baseUrl.includes('hatenablog.com') ||
-        baseUrl.includes('hatenablog.jp') ||
-        baseUrl.includes('hatena.ne.jp') ||
-        $('.hatena-module').length > 0 ||
-        $('#blog-title').length > 0;
-    // Remove unwanted elements (be careful with hatena-specific elements)
-    const removeSelectors = [
-        'script', 'style', 'nav', 'header', 'footer', 'aside',
+    // Remove unwanted elements (common across blog platforms)
+    $([
+        'script', 'style', 'nav', 'header', 'footer', 'aside', 'iframe', 'noscript',
         '.ads', '.advertisement', '.sidebar', '.menu', '.navigation',
-        '.comment', '.comments', '#comments', '.social-share', '.share-buttons',
-        '.related-posts', 'iframe', 'noscript'
+        '.comment', '.comments', '#comments', '.social-share', '.share-buttons', '.related-posts',
+        // Blog platform common: footers, modules, subscribe buttons
+        '.hatena-module', '.hatena-urllist', '#box2', '.entry-footer-section', '.entry-footer-modules',
+        '.hatena-star-container', '.hatena-bookmark-button-frame', '.subscribe-button', '.reader-button',
+        '.page-footer', '.ad-label', '.ad-content', '.google-afc-user-container', '.sentry-error-embed',
+        '.entry-reactions', '.customized-footer', '.hatena-asin-detail'
+    ].join(', ')).remove();
+    // Find main content - try specific selectors first, then generic ones
+    // More specific selectors (with multiple classes) take priority to avoid matching wrong elements
+    const contentSelectors = [
+        '.entry-content.hatenablog-entry', // Hatena Blog actual content
+        '.hatenablog-entry',
+        '.entry.hentry .entry-content', // Generic blog entry
+        '.post-content',
+        '.article-content',
+        'article',
+        'main',
+        '[role="main"]',
+        '.entry-content',
+        '.content',
+        '#content',
+        'body'
     ];
-    // Add Hatena Blog specific selectors to remove
-    if (isHatenaBlog) {
-        removeSelectors.push('.hatena-module', // Sidebar modules
-        '.hatena-module-title', '.hatena-urllist', // Related articles list
-        '#box2', '#box2-inner', // Sidebar container
-        '.entry-footer-section', // Article footer (social buttons, etc)
-        '.entry-footer-modules', '.hatena-star-container', // Hatena stars
-        '.hatena-bookmark-button-frame', '.subscribe-button', // Subscribe button
-        '.reader-button', '.entry-footer-html', '.entry-categories', // Keep categories but remove from extraction
-        '.entry-see-more', // "Read more" links
-        '.page-footer', // Page footer
-        '.ad-label', '.ad-content', // Ads
-        '.google-afc-user-container', '#google_ads_iframe', '.hatena-asin-detail', // Amazon affiliate links
-        '.sentry-error-embed', '.entry-reactions', // Reactions
-        '.customized-footer');
-    }
-    $(removeSelectors.join(', ')).remove();
-    // Try to find main content with Hatena Blog priority
     let $content = $('');
-    if (isHatenaBlog) {
-        // Hatena Blog specific: look for the entry content first
-        // IMPORTANT: Use the combined class selector to get the actual article content
-        // (not the ad container which also has .entry-content)
-        $content = $('.entry-content.hatenablog-entry').first();
-        if ($content.length === 0)
-            $content = $('.hatenablog-entry').first();
-        // Look for the main article entry (with js-entry-article class)
-        if ($content.length === 0)
-            $content = $('.entry.js-entry-article .entry-content').first();
-        if ($content.length === 0)
-            $content = $('.entry.hentry .entry-content').first();
-        if ($content.length === 0)
-            $content = $('#main-inner .entry-content').first();
-        if ($content.length === 0)
-            $content = $('#main').first();
+    for (const selector of contentSelectors) {
+        $content = $(selector).first();
+        // Skip if empty or too short (likely wrong element like ad container)
+        if ($content.length > 0 && $content.text().trim().length > 100) {
+            break;
+        }
     }
-    // Generic selectors as fallback
-    if ($content.length === 0)
-        $content = $('article').first();
-    if ($content.length === 0)
-        $content = $('main').first();
-    if ($content.length === 0)
-        $content = $('[role="main"]').first();
-    if ($content.length === 0)
-        $content = $('.post-content, .article-content, .entry-content, .content, #content').first();
-    if ($content.length === 0)
+    // Fallback to body if nothing found
+    if ($content.length === 0 || $content.text().trim().length < 100) {
         $content = $('body');
+    }
     // Process images - collect and update src
     $content.find('img').each((_, img) => {
         const $img = $(img);
