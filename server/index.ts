@@ -503,10 +503,14 @@ function extractArticleContent(html: string, baseUrl: string): { content: string
   
   if (isHatenaBlog) {
     // Hatena Blog specific: look for the entry content first
-    $content = $('.entry-content').first();
+    // IMPORTANT: Use the combined class selector to get the actual article content
+    // (not the ad container which also has .entry-content)
+    $content = $('.entry-content.hatenablog-entry').first();
     if ($content.length === 0) $content = $('.hatenablog-entry').first();
-    if ($content.length === 0) $content = $('.entry').first();
-    if ($content.length === 0) $content = $('#main-inner').first();
+    // Look for the main article entry (with js-entry-article class)
+    if ($content.length === 0) $content = $('.entry.js-entry-article .entry-content').first();
+    if ($content.length === 0) $content = $('.entry.hentry .entry-content').first();
+    if ($content.length === 0) $content = $('#main-inner .entry-content').first();
     if ($content.length === 0) $content = $('#main').first();
   }
   
