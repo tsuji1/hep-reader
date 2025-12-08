@@ -27,7 +27,7 @@ function decodeFilename(filename) {
 function createTestApp(testDbPath, testConvertedDir) {
   const app = express()
   app.use(express.json())
-  
+
   // テスト用DB
   const db = new Database(testDbPath)
   db.exec(`
@@ -77,25 +77,25 @@ function createTestApp(testDbPath, testConvertedDir) {
       if (!book) {
         return res.status(404).json({ error: 'Book not found' })
       }
-      
+
       // PDFの場合はpages.jsonがないのでそのまま返す
       // category が 'pdf' または original_filename が .pdf で終わる場合
-      const isPdf = book.category === 'pdf' || 
-                    (book.original_filename && book.original_filename.toLowerCase().endsWith('.pdf'))
-      
+      const isPdf = book.category === 'pdf' ||
+        (book.original_filename && book.original_filename.toLowerCase().endsWith('.pdf'))
+
       if (isPdf) {
         return res.json({ ...book, category: 'pdf', total: 1, pages: [] })
       }
-      
+
       const pagesPath = path.join(testConvertedDir, req.params.bookId, 'pages.json')
-      
+
       // pages.jsonが存在しない場合のフォールバック
       if (!fs.existsSync(pagesPath)) {
         return res.json({ ...book, total: book.total_pages || 1, pages: [] })
       }
-      
+
       const pagesInfo = JSON.parse(fs.readFileSync(pagesPath, 'utf8'))
-      
+
       res.json({ ...book, ...pagesInfo })
     } catch (error) {
       res.status(500).json({ error: error.message })
@@ -107,15 +107,15 @@ function createTestApp(testDbPath, testConvertedDir) {
     const { bookId } = req.params
     const bookDir = path.join(testConvertedDir, bookId)
     const mediaDir = path.join(bookDir, 'media')
-    
+
     // ブックディレクトリが存在しない場合
     if (!fs.existsSync(bookDir)) {
       return res.status(404).json({ error: 'Book directory not found' })
     }
-    
+
     const pagesJsonPath = path.join(bookDir, 'pages.json')
     const pdfPath = path.join(bookDir, 'document.pdf')
-    
+
     // PDFの場合
     if (!fs.existsSync(pagesJsonPath) && fs.existsSync(pdfPath)) {
       // カスタムカバーがあればそちらを優先
@@ -126,31 +126,31 @@ function createTestApp(testDbPath, testConvertedDir) {
           return res.sendFile(customCover)
         }
       }
-      
+
       // PDFサムネイルがキャッシュされていればそれを返す
       const thumbnailPath = path.join(bookDir, 'pdf-thumbnail.png')
       if (fs.existsSync(thumbnailPath)) {
         return res.sendFile(thumbnailPath)
       }
-      
+
       // pdftoppmでサムネイル生成を試みる
       try {
         const thumbPrefix = path.join(bookDir, 'pdf-thumb')
         execSync(`pdftoppm -png -f 1 -l 1 -scale-to 400 "${pdfPath}" "${thumbPrefix}"`, { timeout: 30000 })
-        
+
         const possibleFiles = [
           `${thumbPrefix}-1.png`,
           `${thumbPrefix}-01.png`,
           `${thumbPrefix}-001.png`
         ]
-        
+
         for (const thumbFile of possibleFiles) {
           if (fs.existsSync(thumbFile)) {
             fs.renameSync(thumbFile, thumbnailPath)
             return res.sendFile(thumbnailPath)
           }
         }
-        
+
         // ディレクトリ内のpdf-thumb*.pngを探す
         const files = fs.readdirSync(bookDir)
         const thumbMatch = files.find(f => f.startsWith('pdf-thumb') && f.endsWith('.png'))
@@ -162,10 +162,10 @@ function createTestApp(testDbPath, testConvertedDir) {
       } catch (e) {
         // pdftoppmがない環境では失敗する（CIなど）
       }
-      
+
       return res.status(404).json({ error: 'No cover found for PDF' })
     }
-    
+
     // カスタムカバー確認
     const extensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp']
     for (const ext of extensions) {
@@ -174,12 +174,12 @@ function createTestApp(testDbPath, testConvertedDir) {
         return res.sendFile(customCover)
       }
     }
-    
+
     // メディアディレクトリがなければ404
     if (!fs.existsSync(mediaDir)) {
       return res.status(404).json({ error: 'No media found' })
     }
-    
+
     // カバー画像を探す
     const findCover = (dir) => {
       const items = fs.readdirSync(dir, { withFileTypes: true })
@@ -199,9 +199,9 @@ function createTestApp(testDbPath, testConvertedDir) {
       }
       return null
     }
-    
+
     let coverPath = findCover(mediaDir)
-    
+
     // カバーがなければ最初の画像
     if (!coverPath) {
       const findFirstImage = (dir) => {
@@ -222,11 +222,11 @@ function createTestApp(testDbPath, testConvertedDir) {
       }
       coverPath = findFirstImage(mediaDir)
     }
-    
+
     if (coverPath) {
       return res.sendFile(coverPath)
     }
-    
+
     return res.status(404).json({ error: 'No cover found' })
   })
 
@@ -242,11 +242,11 @@ describe('API: GET /api/books/:bookId', () => {
     // クリーンアップ
     if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)
     if (fs.existsSync(testConvertedDir)) fs.rmSync(testConvertedDir, { recursive: true })
-    
+
     // ディレクトリ作成
     fs.mkdirSync(path.dirname(testDbPath), { recursive: true })
     fs.mkdirSync(testConvertedDir, { recursive: true })
-    
+
     const testApp = createTestApp(testDbPath, testConvertedDir)
     app = testApp.app
     dbHelpers = testApp.dbHelpers
@@ -263,7 +263,7 @@ describe('API: GET /api/books/:bookId', () => {
       // Arrange
       const bookId = 'epub-book-1'
       dbHelpers.addBook(bookId, 'Test EPUB', 'test.epub', 10, 'epub')
-      
+
       const bookDir = path.join(testConvertedDir, bookId)
       fs.mkdirSync(bookDir, { recursive: true })
       fs.writeFileSync(
@@ -405,11 +405,11 @@ describe('API: GET /api/books/:bookId/cover', () => {
     // クリーンアップ
     if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)
     if (fs.existsSync(testConvertedDir)) fs.rmSync(testConvertedDir, { recursive: true })
-    
+
     // ディレクトリ作成
     fs.mkdirSync(path.dirname(testDbPath), { recursive: true })
     fs.mkdirSync(testConvertedDir, { recursive: true })
-    
+
     const testApp = createTestApp(testDbPath, testConvertedDir)
     app = testApp.app
     dbHelpers = testApp.dbHelpers
@@ -426,12 +426,12 @@ describe('API: GET /api/books/:bookId/cover', () => {
       // Arrange
       const bookId = 'epub-with-cover'
       dbHelpers.addBook(bookId, 'Test EPUB', 'test.epub', 10, 'epub')
-      
+
       const bookDir = path.join(testConvertedDir, bookId)
       const mediaDir = path.join(bookDir, 'media')
       fs.mkdirSync(mediaDir, { recursive: true })
       fs.writeFileSync(path.join(bookDir, 'pages.json'), JSON.stringify({ total: 10 }))
-      
+
       // ダミーの画像ファイル（1x1 PNG）
       const pngData = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
       fs.writeFileSync(path.join(mediaDir, 'cover.png'), pngData)
@@ -448,12 +448,12 @@ describe('API: GET /api/books/:bookId/cover', () => {
       // Arrange
       const bookId = 'epub-no-cover'
       dbHelpers.addBook(bookId, 'Test EPUB', 'test.epub', 10, 'epub')
-      
+
       const bookDir = path.join(testConvertedDir, bookId)
       const mediaDir = path.join(bookDir, 'media')
       fs.mkdirSync(mediaDir, { recursive: true })
       fs.writeFileSync(path.join(bookDir, 'pages.json'), JSON.stringify({ total: 10 }))
-      
+
       // カバーではない画像
       const pngData = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
       fs.writeFileSync(path.join(mediaDir, 'image001.png'), pngData)
@@ -470,16 +470,16 @@ describe('API: GET /api/books/:bookId/cover', () => {
       // Arrange
       const bookId = 'epub-custom-cover'
       dbHelpers.addBook(bookId, 'Test EPUB', 'test.epub', 10, 'epub')
-      
+
       const bookDir = path.join(testConvertedDir, bookId)
       const mediaDir = path.join(bookDir, 'media')
       fs.mkdirSync(mediaDir, { recursive: true })
       fs.writeFileSync(path.join(bookDir, 'pages.json'), JSON.stringify({ total: 10 }))
-      
+
       // 通常のカバー
       const pngData = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
       fs.writeFileSync(path.join(mediaDir, 'cover.png'), pngData)
-      
+
       // カスタムカバー（こちらが優先される）
       fs.writeFileSync(path.join(bookDir, 'custom-cover.jpg'), pngData)
 
@@ -497,13 +497,13 @@ describe('API: GET /api/books/:bookId/cover', () => {
       // Arrange
       const bookId = 'pdf-with-thumbnail'
       dbHelpers.addBook(bookId, 'Test PDF', 'test.pdf', 1, 'pdf')
-      
+
       const bookDir = path.join(testConvertedDir, bookId)
       fs.mkdirSync(bookDir, { recursive: true })
-      
+
       // PDFファイル（ダミー）
       fs.writeFileSync(path.join(bookDir, 'document.pdf'), 'dummy pdf content')
-      
+
       // キャッシュされたサムネイル
       const pngData = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
       fs.writeFileSync(path.join(bookDir, 'pdf-thumbnail.png'), pngData)
@@ -520,12 +520,12 @@ describe('API: GET /api/books/:bookId/cover', () => {
       // Arrange
       const bookId = 'pdf-custom-cover'
       dbHelpers.addBook(bookId, 'Test PDF', 'test.pdf', 1, 'pdf')
-      
+
       const bookDir = path.join(testConvertedDir, bookId)
       fs.mkdirSync(bookDir, { recursive: true })
-      
+
       fs.writeFileSync(path.join(bookDir, 'document.pdf'), 'dummy pdf content')
-      
+
       // カスタムカバー
       const pngData = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64')
       fs.writeFileSync(path.join(bookDir, 'custom-cover.png'), pngData)
@@ -553,7 +553,7 @@ describe('API: GET /api/books/:bookId/cover', () => {
       // Arrange
       const bookId = 'epub-no-media'
       dbHelpers.addBook(bookId, 'Test EPUB', 'test.epub', 10, 'epub')
-      
+
       const bookDir = path.join(testConvertedDir, bookId)
       fs.mkdirSync(bookDir, { recursive: true })
       fs.writeFileSync(path.join(bookDir, 'pages.json'), JSON.stringify({ total: 10 }))
@@ -566,5 +566,505 @@ describe('API: GET /api/books/:bookId/cover', () => {
       expect(res.status).toBe(404)
       expect(res.body.error).toBe('No media found')
     })
+  })
+})
+
+// ===== Translation Save API Tests =====
+describe('Translation Save API', () => {
+  const testDbPath = path.join(__dirname, '../data/test-translation.db')
+  const testConvertedDir = path.join(__dirname, '../converted-test-translation')
+  let app, dbHelpers
+
+  beforeEach(() => {
+    // クリーンアップ
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)
+    if (fs.existsSync(testConvertedDir)) fs.rmSync(testConvertedDir, { recursive: true })
+
+    // ディレクトリ作成
+    fs.mkdirSync(path.dirname(testDbPath), { recursive: true })
+    fs.mkdirSync(testConvertedDir, { recursive: true })
+
+    const testApp = createTestApp(testDbPath, testConvertedDir)
+    app = testApp.app
+    dbHelpers = testApp.dbHelpers
+
+    // 翻訳保存APIを追加
+    app.post('/api/books/:bookId/page/:pageNum/save-translation', (req, res) => {
+      try {
+        const { bookId, pageNum } = req.params
+        const { content } = req.body
+
+        if (!content || typeof content !== 'string') {
+          return res.status(400).json({ error: 'Content is required' })
+        }
+
+        const pagesDir = path.join(testConvertedDir, bookId, 'pages')
+        const pagePath = path.join(pagesDir, `page-${pageNum}.html`)
+
+        if (!fs.existsSync(pagePath)) {
+          return res.status(404).json({ error: 'Page not found' })
+        }
+
+        // バックアップを作成（初回のみ）
+        const backupPath = path.join(pagesDir, `page-${pageNum}.original.html`)
+        if (!fs.existsSync(backupPath)) {
+          const originalContent = fs.readFileSync(pagePath, 'utf8')
+          fs.writeFileSync(backupPath, originalContent)
+        }
+
+        // 翻訳されたコンテンツを保存
+        fs.writeFileSync(pagePath, content)
+
+        res.json({ success: true, message: 'Translation saved' })
+      } catch (error) {
+        res.status(500).json({ error: error.message })
+      }
+    })
+
+    // 復元APIを追加
+    app.post('/api/books/:bookId/page/:pageNum/restore-original', (req, res) => {
+      try {
+        const { bookId, pageNum } = req.params
+
+        const pagesDir = path.join(testConvertedDir, bookId, 'pages')
+        const pagePath = path.join(pagesDir, `page-${pageNum}.html`)
+        const backupPath = path.join(pagesDir, `page-${pageNum}.original.html`)
+
+        if (!fs.existsSync(backupPath)) {
+          return res.status(404).json({ error: 'Original backup not found' })
+        }
+
+        const originalContent = fs.readFileSync(backupPath, 'utf8')
+        fs.writeFileSync(pagePath, originalContent)
+
+        res.json({ success: true, message: 'Original restored' })
+      } catch (error) {
+        res.status(500).json({ error: error.message })
+      }
+    })
+  })
+
+  afterEach(() => {
+    dbHelpers.close()
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)
+    if (fs.existsSync(testConvertedDir)) fs.rmSync(testConvertedDir, { recursive: true })
+  })
+
+  it('should save translated content and create backup', async () => {
+    // Arrange
+    const bookId = 'test-book-translation'
+    dbHelpers.addBook(bookId, 'Test Book', 'test.epub', 3, 'epub')
+
+    const bookDir = path.join(testConvertedDir, bookId)
+    const pagesDir = path.join(bookDir, 'pages')
+    fs.mkdirSync(pagesDir, { recursive: true })
+
+    const originalContent = '<html><body><p>Original English text</p></body></html>'
+    fs.writeFileSync(path.join(pagesDir, 'page-1.html'), originalContent)
+
+    const translatedContent = '<html><body><p>翻訳された日本語テキスト</p></body></html>'
+
+    // Act
+    const res = await request(app)
+      .post(`/api/books/${bookId}/page/1/save-translation`)
+      .send({ content: translatedContent })
+
+    // Assert
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+
+    // 翻訳が保存されている
+    const savedContent = fs.readFileSync(path.join(pagesDir, 'page-1.html'), 'utf8')
+    expect(savedContent).toBe(translatedContent)
+
+    // バックアップが作成されている
+    const backupContent = fs.readFileSync(path.join(pagesDir, 'page-1.original.html'), 'utf8')
+    expect(backupContent).toBe(originalContent)
+  })
+
+  it('should not overwrite backup on second save', async () => {
+    // Arrange
+    const bookId = 'test-book-backup'
+    dbHelpers.addBook(bookId, 'Test Book', 'test.epub', 1, 'epub')
+
+    const bookDir = path.join(testConvertedDir, bookId)
+    const pagesDir = path.join(bookDir, 'pages')
+    fs.mkdirSync(pagesDir, { recursive: true })
+
+    const originalContent = '<p>Original</p>'
+    fs.writeFileSync(path.join(pagesDir, 'page-1.html'), originalContent)
+
+    // Act - 1回目の保存
+    await request(app)
+      .post(`/api/books/${bookId}/page/1/save-translation`)
+      .send({ content: '<p>First translation</p>' })
+
+    // Act - 2回目の保存
+    await request(app)
+      .post(`/api/books/${bookId}/page/1/save-translation`)
+      .send({ content: '<p>Second translation</p>' })
+
+    // Assert - バックアップは元のまま
+    const backupContent = fs.readFileSync(path.join(pagesDir, 'page-1.original.html'), 'utf8')
+    expect(backupContent).toBe(originalContent)
+  })
+
+  it('should restore original content from backup', async () => {
+    // Arrange
+    const bookId = 'test-book-restore'
+    dbHelpers.addBook(bookId, 'Test Book', 'test.epub', 1, 'epub')
+
+    const bookDir = path.join(testConvertedDir, bookId)
+    const pagesDir = path.join(bookDir, 'pages')
+    fs.mkdirSync(pagesDir, { recursive: true })
+
+    const originalContent = '<p>Original content</p>'
+    fs.writeFileSync(path.join(pagesDir, 'page-1.html'), originalContent)
+
+    // 翻訳を保存
+    await request(app)
+      .post(`/api/books/${bookId}/page/1/save-translation`)
+      .send({ content: '<p>Translated</p>' })
+
+    // Act - 復元
+    const res = await request(app)
+      .post(`/api/books/${bookId}/page/1/restore-original`)
+      .send()
+
+    // Assert
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+
+    const restoredContent = fs.readFileSync(path.join(pagesDir, 'page-1.html'), 'utf8')
+    expect(restoredContent).toBe(originalContent)
+  })
+
+  it('should return 404 for non-existent page', async () => {
+    // Arrange
+    const bookId = 'test-book-404'
+    dbHelpers.addBook(bookId, 'Test Book', 'test.epub', 1, 'epub')
+
+    const bookDir = path.join(testConvertedDir, bookId)
+    const pagesDir = path.join(bookDir, 'pages')
+    fs.mkdirSync(pagesDir, { recursive: true })
+
+    // Act
+    const res = await request(app)
+      .post(`/api/books/${bookId}/page/99/save-translation`)
+      .send({ content: '<p>Test</p>' })
+
+    // Assert
+    expect(res.status).toBe(404)
+    expect(res.body.error).toBe('Page not found')
+  })
+
+  it('should return 400 if content is missing', async () => {
+    // Arrange
+    const bookId = 'test-book-no-content'
+    dbHelpers.addBook(bookId, 'Test Book', 'test.epub', 1, 'epub')
+
+    const bookDir = path.join(testConvertedDir, bookId)
+    const pagesDir = path.join(bookDir, 'pages')
+    fs.mkdirSync(pagesDir, { recursive: true })
+    fs.writeFileSync(path.join(pagesDir, 'page-1.html'), '<p>Test</p>')
+
+    // Act
+    const res = await request(app)
+      .post(`/api/books/${bookId}/page/1/save-translation`)
+      .send({})
+
+    // Assert
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Content is required')
+  })
+})
+
+describe('Translation Status API', () => {
+  const testDbPath = path.join(__dirname, '../data/test-translation-status.db')
+  const testConvertedDir = path.join(__dirname, '../converted-test-translation-status')
+  let app, dbHelpers
+
+  beforeEach(() => {
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)
+    if (fs.existsSync(testConvertedDir)) fs.rmSync(testConvertedDir, { recursive: true })
+
+    fs.mkdirSync(path.dirname(testDbPath), { recursive: true })
+    fs.mkdirSync(testConvertedDir, { recursive: true })
+
+    const testApp = createTestApp(testDbPath, testConvertedDir)
+    app = testApp.app
+    dbHelpers = testApp.dbHelpers
+
+    // 翻訳状態APIを追加
+    app.get('/api/books/:bookId/translation-status', (req, res) => {
+      try {
+        const { bookId } = req.params
+        const pagesDir = path.join(testConvertedDir, bookId, 'pages')
+
+        if (!fs.existsSync(pagesDir)) {
+          return res.status(404).json({ error: 'Book pages not found' })
+        }
+
+        const files = fs.readdirSync(pagesDir)
+        const translatedPages = []
+
+        for (const file of files) {
+          const match = file.match(/^page-(\d+)\.original\.html$/)
+          if (match) {
+            translatedPages.push(parseInt(match[1], 10))
+          }
+        }
+
+        res.json({
+          translatedPages: translatedPages.sort((a, b) => a - b),
+          totalTranslated: translatedPages.length
+        })
+      } catch (error) {
+        res.status(500).json({ error: error.message })
+      }
+    })
+
+    // 全復元APIを追加
+    app.post('/api/books/:bookId/restore-all-translations', (req, res) => {
+      try {
+        const { bookId } = req.params
+        const pagesDir = path.join(testConvertedDir, bookId, 'pages')
+
+        if (!fs.existsSync(pagesDir)) {
+          return res.status(404).json({ error: 'Book pages not found' })
+        }
+
+        const files = fs.readdirSync(pagesDir)
+        let restoredCount = 0
+
+        for (const file of files) {
+          const match = file.match(/^page-(\d+)\.original\.html$/)
+          if (match) {
+            const pageNum = match[1]
+            const backupPath = path.join(pagesDir, file)
+            const pagePath = path.join(pagesDir, `page-${pageNum}.html`)
+
+            const originalContent = fs.readFileSync(backupPath, 'utf8')
+            fs.writeFileSync(pagePath, originalContent)
+            fs.unlinkSync(backupPath)
+            restoredCount++
+          }
+        }
+
+        res.json({ success: true, restoredCount })
+      } catch (error) {
+        res.status(500).json({ error: error.message })
+      }
+    })
+  })
+
+  afterEach(() => {
+    dbHelpers.close()
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)
+    if (fs.existsSync(testConvertedDir)) fs.rmSync(testConvertedDir, { recursive: true })
+  })
+
+  it('should return empty array when no pages are translated', async () => {
+    // Arrange
+    const bookId = 'test-no-translations'
+    dbHelpers.addBook(bookId, 'Test Book', 'test.epub', 3, 'epub')
+
+    const pagesDir = path.join(testConvertedDir, bookId, 'pages')
+    fs.mkdirSync(pagesDir, { recursive: true })
+    fs.writeFileSync(path.join(pagesDir, 'page-1.html'), '<p>Page 1</p>')
+    fs.writeFileSync(path.join(pagesDir, 'page-2.html'), '<p>Page 2</p>')
+
+    // Act
+    const res = await request(app).get(`/api/books/${bookId}/translation-status`)
+
+    // Assert
+    expect(res.status).toBe(200)
+    expect(res.body.translatedPages).toEqual([])
+    expect(res.body.totalTranslated).toBe(0)
+  })
+
+  it('should return translated page numbers', async () => {
+    // Arrange
+    const bookId = 'test-with-translations'
+    dbHelpers.addBook(bookId, 'Test Book', 'test.epub', 5, 'epub')
+
+    const pagesDir = path.join(testConvertedDir, bookId, 'pages')
+    fs.mkdirSync(pagesDir, { recursive: true })
+
+    // ページを作成
+    for (let i = 1; i <= 5; i++) {
+      fs.writeFileSync(path.join(pagesDir, `page-${i}.html`), `<p>Page ${i}</p>`)
+    }
+
+    // ページ1, 3, 5を翻訳済みに（.original.htmlファイルを作成）
+    fs.writeFileSync(path.join(pagesDir, 'page-1.original.html'), '<p>Original 1</p>')
+    fs.writeFileSync(path.join(pagesDir, 'page-3.original.html'), '<p>Original 3</p>')
+    fs.writeFileSync(path.join(pagesDir, 'page-5.original.html'), '<p>Original 5</p>')
+
+    // Act
+    const res = await request(app).get(`/api/books/${bookId}/translation-status`)
+
+    // Assert
+    expect(res.status).toBe(200)
+    expect(res.body.translatedPages).toEqual([1, 3, 5])
+    expect(res.body.totalTranslated).toBe(3)
+  })
+
+  it('should restore all translations and delete backup files', async () => {
+    // Arrange
+    const bookId = 'test-restore-all'
+    dbHelpers.addBook(bookId, 'Test Book', 'test.epub', 2, 'epub')
+
+    const pagesDir = path.join(testConvertedDir, bookId, 'pages')
+    fs.mkdirSync(pagesDir, { recursive: true })
+
+    // 翻訳済み状態を作成
+    fs.writeFileSync(path.join(pagesDir, 'page-1.html'), '<p>Translated 1</p>')
+    fs.writeFileSync(path.join(pagesDir, 'page-1.original.html'), '<p>Original 1</p>')
+    fs.writeFileSync(path.join(pagesDir, 'page-2.html'), '<p>Translated 2</p>')
+    fs.writeFileSync(path.join(pagesDir, 'page-2.original.html'), '<p>Original 2</p>')
+
+    // Act
+    const res = await request(app).post(`/api/books/${bookId}/restore-all-translations`)
+
+    // Assert
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+    expect(res.body.restoredCount).toBe(2)
+
+    // 元のコンテンツが復元されている
+    expect(fs.readFileSync(path.join(pagesDir, 'page-1.html'), 'utf8')).toBe('<p>Original 1</p>')
+    expect(fs.readFileSync(path.join(pagesDir, 'page-2.html'), 'utf8')).toBe('<p>Original 2</p>')
+
+    // バックアップファイルは削除されている
+    expect(fs.existsSync(path.join(pagesDir, 'page-1.original.html'))).toBe(false)
+    expect(fs.existsSync(path.join(pagesDir, 'page-2.original.html'))).toBe(false)
+  })
+})
+
+// ===== Multi-page URL API Tests =====
+// ヘルパー関数のテストは server/multipage-utils.test.js に移動済み
+
+describe('Multi-page URL API: Input Validation', () => {
+  // Simple validation test app
+  const createValidationTestApp = () => {
+    const app = express()
+    app.use(express.json())
+
+    app.post('/api/save-multipage-url', (req, res) => {
+      const { url, linkClass, ignorePaths = [], maxPages = 50 } = req.body
+
+      if (!url || typeof url !== 'string') {
+        return res.status(400).json({ error: 'URL is required' })
+      }
+
+      if (!linkClass || typeof linkClass !== 'string') {
+        return res.status(400).json({ error: 'linkClass is required (e.g., "next-page")' })
+      }
+
+      // Validate URL
+      try {
+        const parsedUrl = new URL(url)
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+          throw new Error('Invalid protocol')
+        }
+      } catch {
+        return res.status(400).json({ error: 'Invalid URL format' })
+      }
+
+      // If validation passes, return success (without actually crawling)
+      res.json({
+        success: true,
+        message: 'Validation passed',
+        params: { url, linkClass, ignorePaths, maxPages }
+      })
+    })
+
+    return app
+  }
+
+  let app
+
+  beforeEach(() => {
+    app = createValidationTestApp()
+  })
+
+  it('should require URL', async () => {
+    const res = await request(app)
+      .post('/api/save-multipage-url')
+      .send({ linkClass: 'next-page' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('URL is required')
+  })
+
+  it('should require linkClass', async () => {
+    const res = await request(app)
+      .post('/api/save-multipage-url')
+      .send({ url: 'https://example.com' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('linkClass is required (e.g., "next-page")')
+  })
+
+  it('should reject invalid URL protocol', async () => {
+    const res = await request(app)
+      .post('/api/save-multipage-url')
+      .send({ url: 'ftp://example.com', linkClass: 'next-page' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Invalid URL format')
+  })
+
+  it('should reject malformed URL', async () => {
+    const res = await request(app)
+      .post('/api/save-multipage-url')
+      .send({ url: 'not-a-valid-url', linkClass: 'next-page' })
+
+    expect(res.status).toBe(400)
+    expect(res.body.error).toBe('Invalid URL format')
+  })
+
+  it('should accept valid HTTP URL', async () => {
+    const res = await request(app)
+      .post('/api/save-multipage-url')
+      .send({ url: 'http://example.com', linkClass: 'next-page' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+  })
+
+  it('should accept valid HTTPS URL', async () => {
+    const res = await request(app)
+      .post('/api/save-multipage-url')
+      .send({ url: 'https://example.com', linkClass: 'next-page' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.success).toBe(true)
+  })
+
+  it('should use default values for optional parameters', async () => {
+    const res = await request(app)
+      .post('/api/save-multipage-url')
+      .send({ url: 'https://example.com', linkClass: 'next-page' })
+
+    expect(res.status).toBe(200)
+    expect(res.body.params.ignorePaths).toEqual([])
+    expect(res.body.params.maxPages).toBe(50)
+  })
+
+  it('should accept custom ignorePaths and maxPages', async () => {
+    const res = await request(app)
+      .post('/api/save-multipage-url')
+      .send({
+        url: 'https://example.com',
+        linkClass: 'next-page',
+        ignorePaths: ['/api.html', '/about'],
+        maxPages: 100
+      })
+
+    expect(res.status).toBe(200)
+    expect(res.body.params.ignorePaths).toEqual(['/api.html', '/about'])
+    expect(res.body.params.maxPages).toBe(100)
   })
 })

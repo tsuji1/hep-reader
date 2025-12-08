@@ -1,8 +1,8 @@
 import axios from 'axios'
-import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
-import { Link, useParams } from 'react-router-dom'
 import hljs from 'highlight.js'
 import 'highlight.js/styles/github.css'
+import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react'
+import { Link, useParams } from 'react-router-dom'
 import AiChat from '../components/AiChat'
 import PdfViewer from '../components/PdfViewer'
 import type { Book, Bookmark, Clip, ClipPosition, PageContent, TocItem } from '../types'
@@ -32,7 +32,7 @@ function Reader(): JSX.Element {
   const [pdfTotalPages, setPdfTotalPages] = useState<number>(0)
   const [showAiChat, setShowAiChat] = useState<boolean>(false)
   const [pdfPageTexts, setPdfPageTexts] = useState<Map<number, string>>(new Map())
-  
+
   // クリップ機能
   const [clipMode, setClipMode] = useState<boolean>(false)
   const [showClipModal, setShowClipModal] = useState<boolean>(false)
@@ -41,27 +41,32 @@ function Reader(): JSX.Element {
   const [clipNote, setClipNote] = useState<string>('')
   const [clipPosition, setClipPosition] = useState<ClipPosition | null>(null)
   const [generatingDescription, setGeneratingDescription] = useState<boolean>(false)
-  
+
   // PDFズーム
   const [pdfScale, setPdfScale] = useState<number>(1.5)
-  
+
+  // 翻訳保存
+  const [savingTranslation, setSavingTranslation] = useState<boolean>(false)
+  const [translatedPages, setTranslatedPages] = useState<Set<number>>(new Set())
+
   const contentRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const isScrollingToPage = useRef<boolean>(false)
+  const hasInitialScrolled = useRef<boolean>(false)
 
   // Fetch book info and all pages
   useEffect(() => {
     const fetchBook = async (): Promise<void> => {
       if (!bookId) return
-      
+
       try {
         const res = await axios.get<Book>(`/api/books/${bookId}`)
         setBook(res.data)
-        
+
         // PDFの場合は別処理 (category または original_filename で判定)
-        const isPdfBook = res.data.category === 'pdf' || 
-                      (res.data.original_filename && res.data.original_filename.toLowerCase().endsWith('.pdf'))
-        
+        const isPdfBook = res.data.category === 'pdf' ||
+          (res.data.original_filename && res.data.original_filename.toLowerCase().endsWith('.pdf'))
+
         if (isPdfBook) {
           setIsPdf(true)
           // PDFの読み込み進捗を取得
@@ -73,43 +78,50 @@ function Reader(): JSX.Element {
           setLoading(false)
           return
         }
-        
+
         // Fetch all pages (EPUB)
         const pagesRes = await axios.get<{ pages: PageContent[]; total: number }>(`/api/books/${bookId}/all-pages`)
         setPages(pagesRes.data.pages)
         setTotalPages(pagesRes.data.total)
-        
+
         // Determine initial page from saved progress
         const progressRes = await axios.get<{ currentPage: number }>(`/api/books/${bookId}/progress`)
         const initialPage = progressRes.data.currentPage || 1
         setCurrentPage(initialPage)
-        
+
         // Fetch TOC
         const tocRes = await axios.get<{ toc: TocItem[] }>(`/api/books/${bookId}/toc`)
         setToc(tocRes.data.toc || [])
-        
-        // Fetch bookmarks and clips
+
+        // Fetch bookmarks, clips, and translation status
         fetchBookmarks()
         fetchClips()
-        
+        fetchTranslationStatus()
+
         setLoading(false)
       } catch (error) {
         console.error('Failed to fetch book:', error)
         setLoading(false)
       }
     }
-    
+
     fetchBook()
+  }, [bookId])
+
+  // Reset initial scroll flag when book changes
+  useEffect(() => {
+    hasInitialScrolled.current = false
   }, [bookId])
 
   // Scroll to initial page after pages are loaded
   useEffect(() => {
-    if (!loading && pages.length > 0 && currentPage > 1 && !isPdf) {
+    if (!loading && pages.length > 0 && currentPage > 1 && !isPdf && !hasInitialScrolled.current) {
+      hasInitialScrolled.current = true
       setTimeout(() => {
         scrollToPage(currentPage, false)
       }, 100)
     }
-  }, [loading, pages.length, isPdf])
+  }, [loading, pages.length, currentPage, isPdf])
 
   // Apply syntax highlighting
   useEffect(() => {
@@ -130,10 +142,10 @@ function Reader(): JSX.Element {
         document.querySelectorAll('pre code').forEach((block) => {
           // クラス名がない場合は自動検出を試みる
           if (!block.className && block.parentElement?.className) {
-             // 親のpreにクラスがある場合、それを継承する (例: class="code lang-c")
-             block.className = block.parentElement.className;
+            // 親のpreにクラスがある場合、それを継承する (例: class="code lang-c")
+            block.className = block.parentElement.className;
           }
-          
+
           // lang-xxx を language-xxx に変換
           if (block.className.includes('lang-') && !block.className.includes('language-')) {
             block.className = block.className.replace(/lang-([a-zA-Z0-9_-]+)/, 'language-$1');
@@ -148,13 +160,13 @@ function Reader(): JSX.Element {
   // Handle scroll to detect current page (only in scroll mode for EPUB)
   useEffect(() => {
     if (viewMode !== 'scroll' || isPdf) return
-    
+
     const handleScroll = (): void => {
       if (isScrollingToPage.current || !contentRef.current) return
-      
+
       const container = contentRef.current
       const containerTop = container.getBoundingClientRect().top
-      
+
       // Find which page is currently most visible
       let visiblePage = 1
       for (let i = 1; i <= pages.length; i++) {
@@ -162,22 +174,22 @@ function Reader(): JSX.Element {
         if (pageEl) {
           const rect = pageEl.getBoundingClientRect()
           const pageTop = rect.top - containerTop
-          
+
           // If this page's top is above the middle of the viewport, it's the current page
           if (pageTop <= 100) {
             visiblePage = i
           }
         }
       }
-      
+
       if (visiblePage !== currentPage) {
         setCurrentPage(visiblePage)
-        
+
         // Save progress (debounced)
         axios.post(`/api/books/${bookId}/progress`, { currentPage: visiblePage })
       }
     }
-    
+
     const container = contentRef.current
     if (container) {
       container.addEventListener('scroll', handleScroll, { passive: true })
@@ -224,12 +236,24 @@ function Reader(): JSX.Element {
     }
   }
 
+  const fetchTranslationStatus = async (): Promise<void> => {
+    try {
+      const res = await axios.get<{ translatedPages: number[]; totalTranslated: number }>(
+        `/api/books/${bookId}/translation-status`
+      )
+      setTranslatedPages(new Set(res.data.translatedPages))
+    } catch (error) {
+      // 翻訳状態の取得に失敗しても致命的ではない
+      console.error('Failed to fetch translation status:', error)
+    }
+  }
+
   const scrollToPage = (page: number, smooth: boolean = true): void => {
     const pageEl = pageRefs.current[page]
     if (pageEl && contentRef.current) {
       isScrollingToPage.current = true
       pageEl.scrollIntoView({ behavior: smooth ? 'smooth' : 'auto', block: 'start' })
-      
+
       setTimeout(() => {
         isScrollingToPage.current = false
       }, smooth ? 500 : 100)
@@ -348,6 +372,179 @@ function Reader(): JSX.Element {
 
   const isCurrentPageBookmarked = bookmarks.some(b => b.page_num === currentPage)
 
+  // 翻訳されたページを保存
+  const saveTranslation = async (): Promise<void> => {
+    if (!contentRef.current || isPdf) return
+
+    setSavingTranslation(true)
+    try {
+      // 現在表示されているページのHTMLを取得
+      let pageElement: HTMLElement | null = null
+
+      if (viewMode === 'scroll') {
+        // スクロールモード: 現在のページセクションを取得
+        pageElement = pageRefs.current[currentPage]
+      } else {
+        // ページモード: コンテンツ全体を取得
+        pageElement = contentRef.current.querySelector('.content-single-page')
+      }
+
+      if (!pageElement) {
+        alert('ページコンテンツが見つかりません')
+        return
+      }
+
+      // content-html部分のHTMLを取得（翻訳されたテキストを含む）
+      const contentHtml = pageElement.querySelector('.content-html')
+      if (!contentHtml) {
+        alert('コンテンツが見つかりません')
+        return
+      }
+
+      // HTMLを取得し、完全なページとして構築
+      const bodyContent = contentHtml.innerHTML
+      const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${book?.title} - Page ${currentPage}</title>
+  <style>
+    body { 
+      font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
+      line-height: 1.8;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #fafafa;
+      color: #333;
+    }
+    img { max-width: 100%; height: auto; }
+    pre { background: #f4f4f4; padding: 15px; overflow-x: auto; border-radius: 5px; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+    h1, h2, h3 { color: #2c3e50; }
+    a { color: #3498db; }
+  </style>
+</head>
+<body>
+  ${bodyContent}
+</body>
+</html>`
+
+      // サーバーに送信
+      await axios.post(`/api/books/${bookId}/page/${currentPage}/save-translation`, {
+        content: fullHtml
+      })
+
+      // 翻訳済みページに追加
+      setTranslatedPages(prev => new Set([...prev, currentPage]))
+
+      alert(`ページ ${currentPage} の翻訳を保存しました！`)
+    } catch (error: unknown) {
+      console.error('Failed to save translation:', error)
+      const axiosError = error as { response?: { data?: { error?: string } } }
+      alert(axiosError.response?.data?.error || '翻訳の保存に失敗しました')
+    } finally {
+      setSavingTranslation(false)
+    }
+  }
+
+  // 全ページの翻訳を一括保存
+  const saveAllTranslations = async (): Promise<void> => {
+    if (!contentRef.current || isPdf || viewMode !== 'scroll') {
+      alert('スクロールモードで全ページを表示してから実行してください')
+      return
+    }
+
+    if (!confirm(`全 ${totalPages} ページの翻訳を保存しますか？\n（Google翻訳などで翻訳した後に実行してください）`)) {
+      return
+    }
+
+    setSavingTranslation(true)
+    let savedCount = 0
+
+    try {
+      for (let pageNum = 1; pageNum <= totalPages; pageNum++) {
+        const pageElement = pageRefs.current[pageNum]
+        if (!pageElement) continue
+
+        const contentHtml = pageElement.querySelector('.content-html')
+        if (!contentHtml) continue
+
+        const bodyContent = contentHtml.innerHTML
+        const fullHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${book?.title} - Page ${pageNum}</title>
+  <style>
+    body { 
+      font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
+      line-height: 1.8;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #fafafa;
+      color: #333;
+    }
+    img { max-width: 100%; height: auto; }
+    pre { background: #f4f4f4; padding: 15px; overflow-x: auto; border-radius: 5px; }
+    code { background: #f4f4f4; padding: 2px 6px; border-radius: 3px; }
+    h1, h2, h3 { color: #2c3e50; }
+    a { color: #3498db; }
+  </style>
+</head>
+<body>
+  ${bodyContent}
+</body>
+</html>`
+
+        await axios.post(`/api/books/${bookId}/page/${pageNum}/save-translation`, {
+          content: fullHtml
+        })
+        savedCount++
+      }
+
+      // 翻訳状態を更新
+      await fetchTranslationStatus()
+
+      alert(`${savedCount} ページの翻訳を保存しました！\nリロードすると翻訳版が表示されます。`)
+    } catch (error: unknown) {
+      console.error('Failed to save translations:', error)
+      const axiosError = error as { response?: { data?: { error?: string } } }
+      alert(`保存中にエラーが発生しました（${savedCount}ページ保存済み）\n${axiosError.response?.data?.error || ''}`)
+    } finally {
+      setSavingTranslation(false)
+    }
+  }
+
+  // 翻訳を元に戻す（全ページ）
+  const restoreAllTranslations = async (): Promise<void> => {
+    if (translatedPages.size === 0) {
+      alert('翻訳保存されたページがありません')
+      return
+    }
+
+    if (!confirm(`${translatedPages.size} ページの翻訳を元に戻しますか？\n（元の言語に戻ります）`)) {
+      return
+    }
+
+    setSavingTranslation(true)
+    try {
+      await axios.post(`/api/books/${bookId}/restore-all-translations`)
+      setTranslatedPages(new Set())
+      alert('全ページを元に戻しました。リロードしてください。')
+      window.location.reload()
+    } catch (error: unknown) {
+      console.error('Failed to restore translations:', error)
+      const axiosError = error as { response?: { data?: { error?: string } } }
+      alert(axiosError.response?.data?.error || '復元に失敗しました')
+    } finally {
+      setSavingTranslation(false)
+    }
+  }
+
   const handlePageJump = (): void => {
     const pageNum = parseInt(jumpPageInput)
     const maxPages = isPdf ? pdfTotalPages : totalPages
@@ -368,15 +565,15 @@ function Reader(): JSX.Element {
   // 現在のページのコンテンツをAIのコンテキストとして取得（前後2ページ含む）
   const getCurrentPageContext = (): string => {
     // 事前説明があれば追加
-    const preContext = book?.ai_context 
-      ? `\n【この本についての事前情報】\n${book.ai_context}\n\n` 
+    const preContext = book?.ai_context
+      ? `\n【この本についての事前情報】\n${book.ai_context}\n\n`
       : ''
-    
+
     if (isPdf) {
       // PDFの場合はテキストを抽出して渡す
       const pageRange = [-2, -1, 0, 1, 2]
       const contextPages: string[] = []
-      
+
       for (const offset of pageRange) {
         const pageNum = currentPage + offset
         if (pageNum >= 1 && pageNum <= pdfTotalPages) {
@@ -387,24 +584,24 @@ function Reader(): JSX.Element {
           }
         }
       }
-      
+
       if (contextPages.length > 0) {
         const allContent = contextPages.join('\n\n---\n\n')
         const maxLength = 6000
-        const truncated = allContent.length > maxLength 
+        const truncated = allContent.length > maxLength
           ? allContent.slice(0, maxLength) + '...'
           : allContent
-        
+
         return `${preContext}PDF文書のタイトル: ${book?.title}\n現在のページ: ${currentPage} / ${pdfTotalPages}\n\n${truncated}`
       }
-      
+
       return `${preContext}PDF文書「${book?.title}」の${currentPage}ページ目を閲覧中です。（テキスト抽出中...）`
     }
-    
+
     // 現在ページ ± 2ページ分のコンテンツを取得
     const pageRange = [-2, -1, 0, 1, 2]
     const contextPages: string[] = []
-    
+
     for (const offset of pageRange) {
       const pageIndex = currentPage - 1 + offset
       if (pageIndex >= 0 && pageIndex < pages.length) {
@@ -417,7 +614,7 @@ function Reader(): JSX.Element {
             .replace(/<[^>]+>/g, ' ')
             .replace(/\s+/g, ' ')
             .trim()
-          
+
           if (textContent) {
             const label = offset === 0 ? '【現在のページ】' : `【${offset > 0 ? '+' : ''}${offset}ページ】`
             contextPages.push(`${label} (p.${pageIndex + 1})\n${textContent}`)
@@ -425,15 +622,15 @@ function Reader(): JSX.Element {
         }
       }
     }
-    
+
     const allContent = contextPages.join('\n\n---\n\n')
-    
+
     // 長すぎる場合は切り取り
     const maxLength = 6000
-    const truncated = allContent.length > maxLength 
+    const truncated = allContent.length > maxLength
       ? allContent.slice(0, maxLength) + '...'
       : allContent
-    
+
     return `${preContext}本のタイトル: ${book?.title}\n現在のページ: ${currentPage} / ${totalPages}\n\n${truncated}`
   }
 
@@ -462,7 +659,7 @@ function Reader(): JSX.Element {
           </div>
           <h2 style={{ marginTop: '10px', fontSize: '1rem', lineHeight: '1.4' }}>{book.title}</h2>
           {book.source_url && (
-            <a 
+            <a
               href={book.source_url}
               target="_blank"
               rel="noopener noreferrer"
@@ -479,8 +676,8 @@ function Reader(): JSX.Element {
             </a>
           )}
           {isPdf && (
-            <a 
-              href={`/api/books/${bookId}/pdf`} 
+            <a
+              href={`/api/books/${bookId}/pdf`}
               download={`${book.title}.pdf`}
               style={{
                 display: 'inline-block',
@@ -497,7 +694,7 @@ function Reader(): JSX.Element {
             </a>
           )}
         </div>
-        
+
         <div className="sidebar-tabs">
           {!isPdf && (
             <button
@@ -520,7 +717,7 @@ function Reader(): JSX.Element {
             📷 ({clips.length})
           </button>
         </div>
-        
+
         <div className="sidebar-content">
           {sidebarTab === 'toc' && !isPdf ? (
             toc.length === 0 ? (
@@ -606,101 +803,161 @@ function Reader(): JSX.Element {
         <div className="reader-toolbar-area">
           <div className="reader-toolbar-trigger" />
           <div className="reader-toolbar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            {!sidebarOpen && (
-              <button
-                className="secondary"
-                onClick={() => setSidebarOpen(true)}
-                title="サイドバーを開く"
-              >
-                ☰ 目次
-              </button>
-            )}
-            
-            <button
-              className={`bookmark-btn ${isCurrentPageBookmarked ? 'active' : ''}`}
-              onClick={() => isCurrentPageBookmarked ? null : setShowBookmarkModal(true)}
-              title={isCurrentPageBookmarked ? 'しおり済み' : 'しおりを追加'}
-            >
-              {isCurrentPageBookmarked ? '🔖' : '📑'} しおり
-            </button>
-
-            {isPdf && (
-              <button
-                className={`clip-btn ${clipMode ? 'active' : ''}`}
-                onClick={() => setClipMode(!clipMode)}
-                title={clipMode ? 'クリップモード終了' : '範囲選択してクリップ'}
-              >
-                📷 クリップ
-              </button>
-            )}
-            
-            {isPdf && (
-              <div className="pdf-zoom-controls">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+              {!sidebarOpen && (
                 <button
-                  onClick={() => setPdfScale(s => Math.max(0.5, s - 0.25))}
-                  title="縮小"
+                  className="secondary"
+                  onClick={() => setSidebarOpen(true)}
+                  title="サイドバーを開く"
                 >
-                  −
+                  ☰ 目次
                 </button>
-                <span>{Math.round(pdfScale * 100)}%</span>
+              )}
+
+              <button
+                className={`bookmark-btn ${isCurrentPageBookmarked ? 'active' : ''}`}
+                onClick={() => isCurrentPageBookmarked ? null : setShowBookmarkModal(true)}
+                title={isCurrentPageBookmarked ? 'しおり済み' : 'しおりを追加'}
+              >
+                {isCurrentPageBookmarked ? '🔖' : '📑'} しおり
+              </button>
+
+              {isPdf && (
                 <button
-                  onClick={() => setPdfScale(s => Math.min(3, s + 0.25))}
-                  title="拡大"
+                  className={`clip-btn ${clipMode ? 'active' : ''}`}
+                  onClick={() => setClipMode(!clipMode)}
+                  title={clipMode ? 'クリップモード終了' : '範囲選択してクリップ'}
                 >
-                  +
+                  📷 クリップ
+                </button>
+              )}
+
+              {isPdf && (
+                <div className="pdf-zoom-controls">
+                  <button
+                    onClick={() => setPdfScale(s => Math.max(0.5, s - 0.25))}
+                    title="縮小"
+                  >
+                    −
+                  </button>
+                  <span>{Math.round(pdfScale * 100)}%</span>
+                  <button
+                    onClick={() => setPdfScale(s => Math.min(3, s + 0.25))}
+                    title="拡大"
+                  >
+                    +
+                  </button>
+                </div>
+              )}
+
+              {clipMode && (
+                <span className="clip-mode-indicator">📷 ドラッグで選択</span>
+              )}
+
+              {/* 翻訳保存ボタン（EPUB/Webのみ） */}
+              {!isPdf && (
+                <div className="translation-controls" style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                  {/* 現在のページの翻訳状態 */}
+                  {translatedPages.has(currentPage) ? (
+                    <span
+                      style={{
+                        fontSize: '0.8rem',
+                        padding: '4px 8px',
+                        background: '#dcfce7',
+                        color: '#166534',
+                        borderRadius: '4px'
+                      }}
+                      title="このページは翻訳保存済みです"
+                    >
+                      ✅ 翻訳済
+                    </span>
+                  ) : (
+                    <button
+                      className="secondary"
+                      onClick={saveTranslation}
+                      disabled={savingTranslation}
+                      title="現在のページの翻訳を保存"
+                      style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+                    >
+                      {savingTranslation ? '⏳' : '💾'} 翻訳保存
+                    </button>
+                  )}
+
+                  {/* 全保存ボタン */}
+                  <button
+                    className="secondary"
+                    onClick={saveAllTranslations}
+                    disabled={savingTranslation || viewMode !== 'scroll'}
+                    title="全ページの翻訳を一括保存（スクロールモードのみ）"
+                    style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+                  >
+                    📥 全保存
+                  </button>
+
+                  {/* 翻訳済みページがある場合は復元ボタンを表示 */}
+                  {translatedPages.size > 0 && (
+                    <button
+                      className="secondary"
+                      onClick={restoreAllTranslations}
+                      disabled={savingTranslation}
+                      title={`${translatedPages.size}ページの翻訳を元に戻す`}
+                      style={{
+                        fontSize: '0.85rem',
+                        padding: '6px 10px',
+                        background: '#fef3c7',
+                        color: '#92400e'
+                      }}
+                    >
+                      🔄 復元 ({translatedPages.size})
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="view-mode-toggle">
+                <button
+                  className={viewMode === 'scroll' ? 'active' : ''}
+                  onClick={() => setViewMode('scroll')}
+                  title="スクロールモード"
+                >
+                  📜
+                </button>
+                <button
+                  className={viewMode === 'page' ? 'active' : ''}
+                  onClick={() => setViewMode('page')}
+                  title="ページモード"
+                >
+                  📄
                 </button>
               </div>
-            )}
-            
-            {clipMode && (
-              <span className="clip-mode-indicator">📷 ドラッグで選択</span>
-            )}
-            
-            <div className="view-mode-toggle">
+            </div>
+
+            <span
+              className="page-info clickable"
+              onClick={() => {
+                setJumpPageInput(currentPage.toString())
+                setShowPageJumpModal(true)
+              }}
+              title="クリックしてページを指定"
+            >
+              {currentPage} / {displayTotalPages || '?'} ページ
+            </span>
+
+            <div className="nav-buttons">
               <button
-                className={viewMode === 'scroll' ? 'active' : ''}
-                onClick={() => setViewMode('scroll')}
-                title="スクロールモード"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1}
               >
-                📜
+                ← 前へ
               </button>
               <button
-                className={viewMode === 'page' ? 'active' : ''}
-                onClick={() => setViewMode('page')}
-                title="ページモード"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= displayTotalPages}
               >
-                📄
+                次へ →
               </button>
             </div>
           </div>
-          
-          <span 
-            className="page-info clickable"
-            onClick={() => {
-              setJumpPageInput(currentPage.toString())
-              setShowPageJumpModal(true)
-            }}
-            title="クリックしてページを指定"
-          >
-            {currentPage} / {displayTotalPages || '?'} ページ
-          </span>
-          
-          <div className="nav-buttons">
-            <button
-              onClick={() => goToPage(currentPage - 1)}
-              disabled={currentPage <= 1}
-            >
-              ← 前へ
-            </button>
-            <button
-              onClick={() => goToPage(currentPage + 1)}
-              disabled={currentPage >= displayTotalPages}
-            >
-              次へ →
-            </button>
-          </div>
-        </div>
         </div>
 
         <div className="reader-content" ref={contentRef}>
@@ -881,7 +1138,7 @@ function Reader(): JSX.Element {
 
       {/* AI Chat */}
       {showAiChat ? (
-        <AiChat 
+        <AiChat
           context={getCurrentPageContext()}
           onClose={() => setShowAiChat(false)}
           aiContext={book.ai_context || ''}
@@ -896,7 +1153,7 @@ function Reader(): JSX.Element {
           }}
         />
       ) : (
-        <button 
+        <button
           className="ai-chat-toggle"
           onClick={() => setShowAiChat(true)}
           title="AIに質問"

@@ -7,6 +7,7 @@ import multer, { FileFilterCallback } from 'multer';
 import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import db from './database';
+import { isValidHttpUrl, normalizeClassSelector, normalizeUrl, resolveUrl, shouldIgnorePath } from './multipage-utils';
 import type { ClipPosition, PagesInfo, TocItem, WebsiteMetadata } from './types';
 
 const app = express();
@@ -631,7 +632,7 @@ function splitContentByHeadings(content: string, _title: string): string[] {
   // Check if there are any h1 or h2 headings
   const h1Count = $('h1').length;
   const h2Count = $('h2').length;
-  
+
   if (h1Count === 0 && h2Count === 0) {
     // No headings, return as single page
     return [modifiedContent];
@@ -789,6 +790,313 @@ app.get('/api/freshrss/share', async (req: Request, res: Response) => {
       </body>
       </html>
     `);
+  }
+});
+
+// Multi-page crawl and save
+app.post('/api/save-multipage-url', async (req: Request, res: Response) => {
+  try {
+    const { url, linkClass, ignorePaths = [], maxPages = 50 } = req.body as {
+      url: string;
+      linkClass: string;
+      ignorePaths?: string[];
+      maxPages?: number;
+    };
+
+    if (!url || typeof url !== 'string') {
+      return res.status(400).json({ error: 'URL is required' });
+    }
+
+    if (!linkClass || typeof linkClass !== 'string') {
+      return res.status(400).json({ error: 'linkClass is required (e.g., "next-page")' });
+    }
+
+    // Validate URL using helper function
+    if (!isValidHttpUrl(url)) {
+      return res.status(400).json({ error: 'Invalid URL format' });
+    }
+
+    const visitedUrls = new Set<string>();
+    const allPages: Array<{ url: string; content: string; images: string[]; title: string }> = [];
+    let currentUrl = url;
+
+    console.log(`Starting multi-page crawl from: ${url}`);
+    console.log(`Link class: ${linkClass}`);
+    console.log(`Ignore paths: ${ignorePaths.join(', ')}`);
+
+    // Crawl pages
+    while (currentUrl && allPages.length < maxPages) {
+      // Normalize URL using helper function
+      const normalizedUrl = normalizeUrl(currentUrl);
+
+      // Skip if already visited
+      if (visitedUrls.has(normalizedUrl)) {
+        console.log(`Already visited: ${normalizedUrl}`);
+        break;
+      }
+
+      // Check if URL should be ignored using helper function
+      const urlPath = new URL(normalizedUrl).pathname;
+      if (shouldIgnorePath(urlPath, ignorePaths)) {
+        console.log(`Ignoring path: ${normalizedUrl}`);
+        break;
+      }
+
+      visitedUrls.add(normalizedUrl);
+      console.log(`Fetching page ${allPages.length + 1}: ${normalizedUrl}`);
+
+      try {
+        const response = await fetchWithTimeout(normalizedUrl);
+        if (!response.ok) {
+          console.log(`Failed to fetch: ${response.status}`);
+          break;
+        }
+
+        const html = await response.text();
+        const metadata = extractMetadata(html, normalizedUrl);
+        const { content, images } = extractArticleContent(html, normalizedUrl);
+
+        allPages.push({
+          url: normalizedUrl,
+          content,
+          images,
+          title: metadata.title
+        });
+
+        // Find next page link
+        const $ = cheerio.load(html);
+        let nextUrl: string | null = null;
+
+        // Look for the link with the specified class using helper function
+        const classSelector = normalizeClassSelector(linkClass);
+
+        const nextLink = $(`a${classSelector}`).first();
+        if (nextLink.length > 0) {
+          const href = nextLink.attr('href');
+          if (href) {
+            // Use helper function to resolve URL
+            nextUrl = resolveUrl(href, normalizedUrl);
+            if (nextUrl) {
+              console.log(`Found next page: ${nextUrl}`);
+            } else {
+              console.log(`Invalid next URL: ${href}`);
+            }
+          }
+        }
+
+        // Also try rel="next" as a fallback
+        if (!nextUrl) {
+          const relNext = $('a[rel="next"]').first();
+          if (relNext.length > 0) {
+            const href = relNext.attr('href');
+            if (href) {
+              // Use helper function to resolve URL
+              nextUrl = resolveUrl(href, normalizedUrl);
+              if (nextUrl) {
+                console.log(`Found next page via rel="next": ${nextUrl}`);
+              } else {
+                console.log(`Invalid next URL: ${href}`);
+              }
+            }
+          }
+        }
+
+        currentUrl = nextUrl || '';
+
+        // Small delay to be polite to servers
+        if (currentUrl) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (e) {
+        console.error(`Error fetching ${normalizedUrl}:`, (e as Error).message);
+        break;
+      }
+    }
+
+    if (allPages.length === 0) {
+      return res.status(400).json({ error: 'No pages could be fetched' });
+    }
+
+    console.log(`Crawled ${allPages.length} pages`);
+
+    // Create book directory
+    const bookId = uuidv4();
+    const bookDir = path.join(convertedDir, bookId);
+    const mediaDir = path.join(bookDir, 'media');
+    const pagesDir = path.join(bookDir, 'pages');
+
+    fs.mkdirSync(bookDir, { recursive: true });
+    fs.mkdirSync(mediaDir, { recursive: true });
+    fs.mkdirSync(pagesDir, { recursive: true });
+
+    // Collect all images and download them
+    let imageIndex = 0;
+    const imageMap = new Map<string, string>(); // original URL -> local path
+
+    for (const page of allPages) {
+      for (const imgUrl of page.images) {
+        if (!imageMap.has(imgUrl)) {
+          try {
+            const ext = path.extname(new URL(imgUrl).pathname) || '.jpg';
+            const localPath = `media/${imageIndex}${ext}`;
+            const imgPath = path.join(bookDir, localPath);
+            await downloadImage(imgUrl, imgPath);
+            imageMap.set(imgUrl, localPath);
+            imageIndex++;
+          } catch (e) {
+            console.log(`Failed to download image: ${imgUrl}`);
+          }
+        }
+      }
+    }
+
+    // Create HTML pages
+    const pageFiles: string[] = [];
+    const firstPage = allPages[0];
+    const bookTitle = firstPage.title;
+
+    // Custom styles (same as save-url)
+    const customStyles = `
+      <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github.min.css">
+      <style>
+        body { 
+          font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
+          line-height: 1.8;
+          max-width: 800px;
+          margin: 0 auto;
+          padding: 20px;
+          background: #fafafa;
+          color: #333;
+        }
+        img { max-width: 100%; height: auto; display: block; margin: 1em auto; }
+        pre { 
+          padding: 0;
+          overflow-x: auto;
+          border-radius: 5px;
+          margin: 1em 0;
+        }
+        pre code { 
+          display: block;
+          padding: 15px;
+          font-family: 'Consolas', 'Monaco', monospace;
+          font-size: 0.9em;
+        }
+        code { 
+          background: #f4f4f4; 
+          padding: 2px 6px;
+          border-radius: 3px;
+          font-family: 'Consolas', 'Monaco', monospace;
+        }
+        h1, h2, h3 { color: #2c3e50; }
+        a { color: #3498db; }
+        blockquote { border-left: 4px solid #3498db; margin: 1em 0; padding-left: 1em; color: #666; }
+        .page-source { 
+          margin-top: 20px;
+          padding: 10px;
+          background: #f0f0f0;
+          border-radius: 5px;
+          font-size: 0.8em;
+          color: #666;
+        }
+      </style>
+    `;
+
+    const highlightScript = `
+      <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+      <script>
+        document.addEventListener('DOMContentLoaded', function() {
+          hljs.highlightAll();
+        });
+      </script>
+    `;
+
+    for (let i = 0; i < allPages.length; i++) {
+      const page = allPages[i];
+      const pageNum = i + 1;
+
+      // Fix image paths in content
+      let fixedContent = page.content;
+      for (const [originalUrl, localPath] of imageMap.entries()) {
+        // Replace all variations of the image reference
+        const patterns = [
+          new RegExp(`src="[^"]*${imageIndex}\\.img"`, 'g'),
+        ];
+
+        // Simple approach: replace media/INDEX.img with actual local path
+        for (let j = 0; j < page.images.length; j++) {
+          const imgUrl = page.images[j];
+          const localImgPath = imageMap.get(imgUrl);
+          if (localImgPath) {
+            fixedContent = fixedContent.replace(
+              new RegExp(`media/${j}\\.img`, 'g'),
+              `../${localImgPath}`
+            );
+          }
+        }
+      }
+
+      const pageHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${page.title} - Page ${pageNum}</title>
+  ${customStyles}
+</head>
+<body>
+  <h1>${page.title}</h1>
+  ${fixedContent}
+  <div class="page-source">
+    Page ${pageNum} of ${allPages.length} | Source: <a href="${page.url}" target="_blank">${page.url}</a>
+  </div>
+  ${highlightScript}
+</body>
+</html>`;
+
+      const pageFile = `page-${pageNum}.html`;
+      fs.writeFileSync(path.join(pagesDir, pageFile), pageHtml);
+      pageFiles.push(pageFile);
+    }
+
+    // Save pages index
+    fs.writeFileSync(
+      path.join(bookDir, 'pages.json'),
+      JSON.stringify({ total: pageFiles.length, pages: pageFiles })
+    );
+
+    // Save metadata
+    fs.writeFileSync(
+      path.join(bookDir, 'metadata.json'),
+      JSON.stringify({
+        title: bookTitle,
+        sourceUrl: url,
+        crawledPages: allPages.map(p => p.url),
+        linkClass,
+        ignorePaths,
+        savedAt: new Date().toISOString()
+      })
+    );
+
+    // Save to database
+    db.addWebsiteBook(bookId, bookTitle, url, pageFiles.length);
+
+    // Auto-suggest tags
+    const webTag = db.getAllTags().find(t => t.name === 'web');
+    if (webTag) {
+      db.addTagToBook(bookId, webTag.id);
+    }
+
+    res.json({
+      success: true,
+      bookId,
+      title: bookTitle,
+      bookType: 'website',
+      totalPages: pageFiles.length,
+      crawledUrls: allPages.map(p => p.url)
+    });
+  } catch (error) {
+    console.error('Save multipage URL error:', error);
+    res.status(500).json({ error: (error as Error).message });
   }
 });
 
@@ -1051,6 +1359,133 @@ app.get('/api/books/:bookId/page/:pageNum', (req: Request, res: Response) => {
     const content = fs.readFileSync(pagePath, 'utf8');
     res.json({ content, pageNum: parseInt(pageNum) });
   } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Save translated page content (翻訳されたページを保存)
+app.post('/api/books/:bookId/page/:pageNum/save-translation', (req: Request, res: Response) => {
+  try {
+    const { bookId, pageNum } = req.params;
+    const { content } = req.body as { content: string };
+
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    const pagesDir = path.join(convertedDir, bookId, 'pages');
+    const pagePath = path.join(pagesDir, `page-${pageNum}.html`);
+
+    if (!fs.existsSync(pagePath)) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    // バックアップを作成（初回のみ）
+    const backupPath = path.join(pagesDir, `page-${pageNum}.original.html`);
+    if (!fs.existsSync(backupPath)) {
+      const originalContent = fs.readFileSync(pagePath, 'utf8');
+      fs.writeFileSync(backupPath, originalContent);
+    }
+
+    // 翻訳されたコンテンツを保存
+    fs.writeFileSync(pagePath, content);
+
+    console.log(`Saved translated page: ${bookId}/page-${pageNum}`);
+    res.json({ success: true, message: 'Translation saved' });
+  } catch (error) {
+    console.error('Save translation error:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Restore original page content (元のページを復元)
+app.post('/api/books/:bookId/page/:pageNum/restore-original', (req: Request, res: Response) => {
+  try {
+    const { bookId, pageNum } = req.params;
+
+    const pagesDir = path.join(convertedDir, bookId, 'pages');
+    const pagePath = path.join(pagesDir, `page-${pageNum}.html`);
+    const backupPath = path.join(pagesDir, `page-${pageNum}.original.html`);
+
+    if (!fs.existsSync(backupPath)) {
+      return res.status(404).json({ error: 'Original backup not found' });
+    }
+
+    // バックアップから復元
+    const originalContent = fs.readFileSync(backupPath, 'utf8');
+    fs.writeFileSync(pagePath, originalContent);
+
+    console.log(`Restored original page: ${bookId}/page-${pageNum}`);
+    res.json({ success: true, message: 'Original restored' });
+  } catch (error) {
+    console.error('Restore original error:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Get translation status for all pages (翻訳状態を取得)
+app.get('/api/books/:bookId/translation-status', (req: Request, res: Response) => {
+  try {
+    const { bookId } = req.params;
+    const pagesDir = path.join(convertedDir, bookId, 'pages');
+
+    if (!fs.existsSync(pagesDir)) {
+      return res.status(404).json({ error: 'Book pages not found' });
+    }
+
+    // .original.html ファイルを探して翻訳済みページを特定
+    const files = fs.readdirSync(pagesDir);
+    const translatedPages: number[] = [];
+
+    for (const file of files) {
+      const match = file.match(/^page-(\d+)\.original\.html$/);
+      if (match) {
+        translatedPages.push(parseInt(match[1], 10));
+      }
+    }
+
+    res.json({
+      translatedPages: translatedPages.sort((a, b) => a - b),
+      totalTranslated: translatedPages.length
+    });
+  } catch (error) {
+    console.error('Get translation status error:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Restore all translated pages to original (全ページを元に戻す)
+app.post('/api/books/:bookId/restore-all-translations', (req: Request, res: Response) => {
+  try {
+    const { bookId } = req.params;
+    const pagesDir = path.join(convertedDir, bookId, 'pages');
+
+    if (!fs.existsSync(pagesDir)) {
+      return res.status(404).json({ error: 'Book pages not found' });
+    }
+
+    const files = fs.readdirSync(pagesDir);
+    let restoredCount = 0;
+
+    for (const file of files) {
+      const match = file.match(/^page-(\d+)\.original\.html$/);
+      if (match) {
+        const pageNum = match[1];
+        const backupPath = path.join(pagesDir, file);
+        const pagePath = path.join(pagesDir, `page-${pageNum}.html`);
+
+        const originalContent = fs.readFileSync(backupPath, 'utf8');
+        fs.writeFileSync(pagePath, originalContent);
+        // バックアップファイルを削除
+        fs.unlinkSync(backupPath);
+        restoredCount++;
+      }
+    }
+
+    console.log(`Restored ${restoredCount} pages for book: ${bookId}`);
+    res.json({ success: true, restoredCount });
+  } catch (error) {
+    console.error('Restore all translations error:', error);
     res.status(500).json({ error: (error as Error).message });
   }
 });

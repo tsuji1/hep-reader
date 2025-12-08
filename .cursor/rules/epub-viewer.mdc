@@ -1,0 +1,164 @@
+---
+description: EPUB/PDF Viewerプロジェクトの開発ガイドライン
+globs:
+  - "**/*.ts"
+  - "**/*.tsx"
+  - "**/*.js"
+  - "**/*.jsx"
+alwaysApply: true
+---
+
+# EPUB/PDF Viewer - Cursor開発ガイドライン
+
+## アーキテクチャ概要
+
+**EPUB/PDF → HTML変換ビューア** の3層構成:
+
+```
+Client (React/Vite:3000) ──API──> Server (Express:3001) ──pandoc──> converted/{bookId}/
+         ↓ proxy                    ↓
+        /api/* → :3001         SQLite (data/epub-viewer.db)
+```
+
+**データフロー**: EPUB upload → pandoc変換 → HTMLをページ分割 → `converted/{uuid}/pages/` に保存
+
+## 重要なファイル
+
+| パス | 役割 |
+|------|------|
+| `server/index.ts` | Express API & EPUB変換ロジック |
+| `server/database.ts` | SQLite操作 (better-sqlite3, 同期API) |
+| `client/src/pages/Home.tsx` | ライブラリ画面 (アップロード/一覧) |
+| `client/src/pages/Reader.tsx` | リーダー画面 (スクロール/ページモード) |
+| `client/src/components/PdfViewer.tsx` | PDF表示 (pdf.js) |
+| `client/src/components/AiChat.tsx` | AIチャット機能 |
+| `import-epub.js` | 一括インポートCLI |
+
+## 技術スタック
+
+| レイヤー | 技術 |
+|---------|------|
+| フロントエンド | React 18, TypeScript, Vite, React Router, pdf.js |
+| バックエンド | Node.js, Express.js, TypeScript |
+| データベース | SQLite (better-sqlite3) |
+| 変換エンジン | pandoc (EPUB→HTML), poppler (PDF) |
+| AI連携 | Gemini API, Claude API, OpenAI API |
+| テスト | Vitest, supertest |
+| コンテナ | Docker, Docker Compose |
+
+## 開発コマンド
+
+```bash
+# 依存インストール
+npm run install:all
+
+# 開発サーバー起動 (Vite: 3000, Express: 3001)
+npm run dev
+
+# テスト実行（必須）
+npm test
+
+# Dockerデプロイ (本番ポート: 10300)
+docker compose up -d --build
+```
+
+## TDD開発フロー（必須）
+
+**重要: 機能追加・バグ修正は必ずテストファーストで行うこと！**
+
+### Red → Green → Refactor サイクル
+
+1. **Red**: 失敗するテストを最小限で書く
+2. **Green**: テストを通す最小限のコードを書く
+3. **Refactor**: 重複除去・設計改善 (テストは緑のまま)
+
+### 新機能追加時
+
+```bash
+# 1. テストを書く (server/api.test.js または server/database.test.js)
+# 2. テスト実行 → 失敗確認
+npm test
+# 3. 最小限の実装
+# 4. テスト実行 → 成功確認
+npm test
+# 5. デプロイ
+docker compose up -d --build
+```
+
+### テストファイル
+
+| ファイル | 内容 |
+|---------|------|
+| `server/api.test.js` | API統合テスト (supertest) |
+| `server/database.test.js` | DB操作テスト |
+| `client/src/utils/reader.test.js` | ユーティリティ関数テスト |
+
+## コード規約
+
+### バックエンド (server/)
+
+- **同期DB API使用**: `db.prepare().run()` / `.get()` / `.all()`
+- **パス**: `path.join(__dirname, '../...')` で相対パス解決
+- **エラー**: try-catch でラップし `res.status(500).json({ error: message })`
+- **新規API**: `database.ts`にDB操作関数 → `index.ts`でルート定義
+
+### フロントエンド (client/src/)
+
+- **React 18 + TypeScript + Vite**
+- **状態管理**: useState/useEffect のみ (Redux等は不使用)
+- **API呼び出し**: axios使用、エラーはconsole.error + alert
+- **スタイル**: `index.css` に全CSS集約
+
+### 画像パス修正パターン
+
+```typescript
+// EPUB内の画像パスをAPI経由に変換
+content
+  .replace(/src="\/home\/[^"]*\/media\//g, `src="/api/books/${bookId}/media/`)
+  .replace(/src="media\//g, `src="/api/books/${bookId}/media/`)
+```
+
+## DBスキーマ
+
+```sql
+books (id TEXT PK, title, original_filename, total_pages, category, language, created_at, updated_at)
+bookmarks (id TEXT PK, book_id FK, page_num, note, created_at)
+reading_progress (book_id TEXT PK, current_page, updated_at)
+```
+
+**マイグレーション例**:
+```typescript
+try { db.exec(`ALTER TABLE books ADD COLUMN language TEXT DEFAULT 'en'`); } catch(e) {}
+```
+
+## API エンドポイント
+
+| Method | Endpoint | 説明 |
+|--------|----------|------|
+| POST | `/api/upload` | EPUB/PDFアップロード |
+| POST | `/api/save-url` | URL保存 |
+| GET | `/api/books` | 書籍一覧 |
+| PATCH | `/api/books/:id` | 書籍更新 |
+| DELETE | `/api/books/:id` | 書籍削除 |
+| GET | `/api/books/:id/all-pages` | 全ページ取得 |
+| GET | `/api/books/:id/pdf` | PDFファイル |
+| POST | `/api/ai/chat` | AIチャット |
+
+## Git運用
+
+```bash
+git add -A && git commit -m "feat: 機能説明"  # 機能追加
+git add -A && git commit -m "fix: バグ説明"   # バグ修正
+git add -A && git commit -m "refactor: 説明"  # リファクタ
+git add -A && git commit -m "test: 説明"      # テスト追加
+```
+
+## トラブルシューティング
+
+| 問題 | 確認ポイント |
+|------|-------------|
+| 変換失敗 | `which pandoc` でインストール確認 |
+| PDF表示されない | poppler-utilsがインストールされているか |
+| 画像非表示 | `/api/books/:id/media/*` ルート確認 |
+| DB接続エラー | `data/` ディレクトリの権限確認 |
+| AI動作しない | 設定画面でAPIキーが登録されているか |

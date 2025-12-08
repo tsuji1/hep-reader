@@ -21,6 +21,14 @@ function Home(): JSX.Element {
   const [uploadingCover, setUploadingCover] = useState<boolean>(false)
   const [urlInput, setUrlInput] = useState<string>('')
   const [savingUrl, setSavingUrl] = useState<boolean>(false)
+  // 複数ページ登録モーダル
+  const [showMultiPageModal, setShowMultiPageModal] = useState<boolean>(false)
+  const [multiPageUrl, setMultiPageUrl] = useState<string>('')
+  const [linkClass, setLinkClass] = useState<string>('')
+  const [ignorePaths, setIgnorePaths] = useState<string>('')
+  const [maxPages, setMaxPages] = useState<number>(50)
+  const [savingMultiPage, setSavingMultiPage] = useState<boolean>(false)
+  const [multiPageProgress, setMultiPageProgress] = useState<string>('')
   // タグ機能
   const [allTags, setAllTags] = useState<Tag[]>([])
   const [selectedTagFilters, setSelectedTagFilters] = useState<string[]>([])
@@ -92,10 +100,10 @@ function Home(): JSX.Element {
       const res = await axios.post<{ bookId: string; bookType: string }>('/api/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
-      
+
       setUploadProgress('完了!')
       fetchBooks()
-      
+
       // Navigate to reader or PDF viewer
       setTimeout(() => {
         if (res.data.bookType === 'pdf') {
@@ -172,6 +180,56 @@ function Home(): JSX.Element {
     }
   }
 
+  // Save Multi-page URL
+  const handleSaveMultiPageUrl = async (): Promise<void> => {
+    if (!multiPageUrl.trim() || !linkClass.trim()) {
+      alert('URLとリンクのクラス名を入力してください')
+      return
+    }
+
+    setSavingMultiPage(true)
+    setMultiPageProgress('ページを取得中...')
+    try {
+      const ignorePathsArray = ignorePaths
+        .split('\n')
+        .map(p => p.trim())
+        .filter(p => p.length > 0)
+
+      const res = await axios.post<{
+        bookId: string
+        title: string
+        totalPages: number
+        crawledUrls: string[]
+      }>('/api/save-multipage-url', {
+        url: multiPageUrl.trim(),
+        linkClass: linkClass.trim(),
+        ignorePaths: ignorePathsArray,
+        maxPages
+      })
+
+      setMultiPageProgress(`完了! ${res.data.totalPages}ページを保存しました`)
+      fetchBooks()
+
+      // Close modal and navigate after a short delay
+      setTimeout(() => {
+        setShowMultiPageModal(false)
+        setMultiPageUrl('')
+        setLinkClass('')
+        setIgnorePaths('')
+        setMaxPages(50)
+        setMultiPageProgress('')
+        navigate(`/read/${res.data.bookId}`)
+      }, 1500)
+    } catch (error: unknown) {
+      console.error('Save multi-page URL failed:', error)
+      const axiosError = error as { response?: { data?: { error?: string } } }
+      alert(axiosError.response?.data?.error || '複数ページの保存に失敗しました')
+      setMultiPageProgress('')
+    } finally {
+      setSavingMultiPage(false)
+    }
+  }
+
   // Sort books based on selected option
   const sortedBooks = [...books].sort((a, b) => {
     switch (sortBy) {
@@ -187,9 +245,9 @@ function Home(): JSX.Element {
 
   // Filter by tags (AND condition)
   const tagFilteredBooks = selectedTagFilters.length > 0
-    ? sortedBooks.filter(book => 
-        selectedTagFilters.every(tagId => bookTags[book.id]?.some(t => t.id === tagId))
-      )
+    ? sortedBooks.filter(book =>
+      selectedTagFilters.every(tagId => bookTags[book.id]?.some(t => t.id === tagId))
+    )
     : sortedBooks
 
   // Filter by type (EPUB/PDF/WEB)
@@ -293,10 +351,10 @@ function Home(): JSX.Element {
       alert('積読タグが見つかりません。ページを再読み込みしてください。')
       return
     }
-    
+
     // すでに積読タグがついている場合は削除
     const hasTsundoku = bookTags[bookId]?.some(t => t.id === tsundokuTag.id)
-    
+
     try {
       if (hasTsundoku) {
         await axios.delete(`/api/books/${bookId}/tags/${tsundokuTag.id}`)
@@ -320,7 +378,7 @@ function Home(): JSX.Element {
     e.stopPropagation()
     const totalPages = book.book_type === 'pdf' ? book.pdf_total_pages : book.total_pages
     if (!totalPages) return
-    
+
     try {
       await axios.post(`/api/books/${book.id}/progress`, { currentPage: totalPages })
       fetchBooks()
@@ -358,7 +416,7 @@ function Home(): JSX.Element {
   const handleResetCover = async (): Promise<void> => {
     if (!editingBook) return
     if (!confirm('カバー画像を元に戻しますか？')) return
-    
+
     try {
       await axios.delete(`/api/books/${editingBook.id}/cover`)
       setCoverPreview(null)
@@ -373,7 +431,7 @@ function Home(): JSX.Element {
   // Save book edits
   const saveBookEdit = async (): Promise<void> => {
     if (!editingBook) return
-    
+
     setUploadingCover(true)
     try {
       // Upload cover if changed
@@ -384,7 +442,7 @@ function Home(): JSX.Element {
           headers: { 'Content-Type': 'multipart/form-data' }
         })
       }
-      
+
       // Update book info
       await axios.patch(`/api/books/${editingBook.id}`, {
         title: editTitle,
@@ -465,9 +523,18 @@ function Home(): JSX.Element {
               >
                 {savingUrl ? '保存中...' : '保存'}
               </button>
+              <button
+                type="button"
+                onClick={() => setShowMultiPageModal(true)}
+                className="url-save-btn"
+                style={{ marginLeft: '8px', background: '#10b981' }}
+                title="複数ページを連結して保存"
+              >
+                📑 複数ページ
+              </button>
             </div>
             <p className="hint" style={{ marginTop: '8px', textAlign: 'center' }}>
-              Webページの本文と画像を保存してオフラインで閲覧
+              Webページの本文と画像を保存してオフラインで閲覧 | 「複数ページ」で連続ページを連結保存
             </p>
           </form>
         </section>
@@ -555,8 +622,8 @@ function Home(): JSX.Element {
                 return (
                   <button
                     key={tag.id}
-                    onClick={() => setSelectedTagFilters(prev => 
-                      isSelected 
+                    onClick={() => setSelectedTagFilters(prev =>
+                      isSelected
                         ? prev.filter(id => id !== tag.id)
                         : [...prev, tag.id]
                     )}
@@ -581,7 +648,7 @@ function Home(): JSX.Element {
               )}
             </div>
           )}
-          
+
           {loading ? (
             <div className="loading">読み込み中</div>
           ) : books.length === 0 ? (
@@ -596,150 +663,151 @@ function Home(): JSX.Element {
                 {paginatedBooks.map((book) => {
                   const hasTsundoku = bookTags[book.id]?.some(t => t.name === '積読')
                   return (
-                <div
-                  key={book.id}
-                  className="book-card"
-                  onClick={() => openBook(book)}
-                >
-                  {/* 読了完了ボタン */}
-                  {getProgress(book) < 100 && (
-                    <button
-                      className="complete-btn"
-                      onClick={(e) => markAsComplete(e, book)}
-                      title="読了完了にする"
-                      style={{
-                        position: 'absolute',
-                        bottom: '8px',
-                        right: '48px',
-                        zIndex: 10,
-                        background: 'rgba(255,255,255,0.9)',
-                        border: 'none',
-                        borderRadius: '50%',
-                        width: '32px',
-                        height: '32px',
-                        cursor: 'pointer',
-                        fontSize: '1rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                        opacity: 0,
-                        transition: 'opacity 0.2s'
-                      }}
+                    <div
+                      key={book.id}
+                      className="book-card"
+                      onClick={() => openBook(book)}
                     >
-                      ✅
-                    </button>
-                  )}
-                  <button
-                    className="tsundoku-btn"
-                    onClick={(e) => addToTsundoku(e, book.id)}
-                    title={hasTsundoku ? '積読から削除' : '積読に追加'}
-                    style={{
-                      position: 'absolute',
-                      bottom: '8px',
-                      right: '8px',
-                      zIndex: 10,
-                      background: hasTsundoku ? '#f59e0b' : 'rgba(255,255,255,0.9)',
-                      border: 'none',
-                      borderRadius: '50%',
-                      width: '32px',
-                      height: '32px',
-                      cursor: 'pointer',
-                      fontSize: '1rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                    }}
-                  >
-                    {hasTsundoku ? '✓' : '📖'}
-                  </button>
-                  <button
-                    className="edit-btn"
-                    onClick={(e) => openEditModal(e, book)}
-                    title="編集"
-                  >
-                    ⚙
-                  </button>
-                  <button
-                    className="delete-btn"
-                    onClick={(e) => handleDelete(e, book.id)}
-                    title="削除"
-                  >
-                    ×
-                  </button>
-                  <div className="book-cover">
-                    <img 
-                      src={`/api/books/${book.id}/cover`} 
-                      alt={book.title}
-                      onError={(e) => {
-                        const target = e.target as HTMLImageElement
-                        target.style.display = 'none'
-                        target.parentElement?.classList.add('no-cover')
-                      }}
-                    />
-                    <div className="no-cover-icon">
-                      {book.book_type === 'pdf' ? '📄' : book.book_type === 'website' ? '🌐' : '📖'}
-                    </div>
-                    {/* 左上にタイプバッジ */}
-                    <div 
-                      className="book-type-badge"
-                      style={{ 
-                        background: book.book_type === 'pdf' ? '#ef4444' 
-                                  : book.book_type === 'website' ? '#10b981' 
-                                  : '#667eea' 
-                      }}
-                    >
-                      {book.book_type === 'pdf' ? 'PDF' : book.book_type === 'website' ? 'WEB' : 'EPUB'}
-                    </div>
-                  </div>
-                  <div className="book-info">
-                    <h3>{book.title}</h3>
-                    <div className="meta">
-                      {book.book_type === 'pdf' 
-                        ? `PDF${book.pdf_total_pages ? ` • ${book.pdf_total_pages}ページ` : ''}`
-                        : book.book_type === 'website' 
-                        ? 'Webページ' 
-                        : `${book.total_pages}ページ`}
-                      {book.current_page && book.current_page > 1 && (
-                        <> • {Math.round(getProgress(book))}% 読了</>
+                      {/* 読了完了ボタン */}
+                      {getProgress(book) < 100 && (
+                        <button
+                          className="complete-btn"
+                          onClick={(e) => markAsComplete(e, book)}
+                          title="読了完了にする"
+                          style={{
+                            position: 'absolute',
+                            bottom: '8px',
+                            right: '48px',
+                            zIndex: 10,
+                            background: 'rgba(255,255,255,0.9)',
+                            border: 'none',
+                            borderRadius: '50%',
+                            width: '32px',
+                            height: '32px',
+                            cursor: 'pointer',
+                            fontSize: '1rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
+                            opacity: 0,
+                            transition: 'opacity 0.2s'
+                          }}
+                        >
+                          ✅
+                        </button>
                       )}
-                    </div>
-                    <div className="meta" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
-                      🌐 {book.language === 'ja' ? '日本語' : book.language === 'en' ? '英語' : book.language || '英語'}
-                    </div>
-                    {/* タグ表示 */}
-                    {bookTags[book.id]?.length > 0 && (
-                      <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
-                        {bookTags[book.id].map(tag => (
-                          <span
-                            key={tag.id}
-                            style={{
-                              padding: '2px 8px',
-                              background: tag.color,
-                              color: 'white',
-                              borderRadius: '10px',
-                              fontSize: '0.7rem'
-                            }}
-                          >
-                            {tag.name}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                    <div className="progress-bar">
-                      <div
-                        className="fill"
+                      <button
+                        className="tsundoku-btn"
+                        onClick={(e) => addToTsundoku(e, book.id)}
+                        title={hasTsundoku ? '積読から削除' : '積読に追加'}
                         style={{
-                          width: `${getProgress(book)}%`
+                          position: 'absolute',
+                          bottom: '8px',
+                          right: '8px',
+                          zIndex: 10,
+                          background: hasTsundoku ? '#f59e0b' : 'rgba(255,255,255,0.9)',
+                          border: 'none',
+                          borderRadius: '50%',
+                          width: '32px',
+                          height: '32px',
+                          cursor: 'pointer',
+                          fontSize: '1rem',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
                         }}
-                      />
+                      >
+                        {hasTsundoku ? '✓' : '📖'}
+                      </button>
+                      <button
+                        className="edit-btn"
+                        onClick={(e) => openEditModal(e, book)}
+                        title="編集"
+                      >
+                        ⚙
+                      </button>
+                      <button
+                        className="delete-btn"
+                        onClick={(e) => handleDelete(e, book.id)}
+                        title="削除"
+                      >
+                        ×
+                      </button>
+                      <div className="book-cover">
+                        <img
+                          src={`/api/books/${book.id}/cover`}
+                          alt={book.title}
+                          onError={(e) => {
+                            const target = e.target as HTMLImageElement
+                            target.style.display = 'none'
+                            target.parentElement?.classList.add('no-cover')
+                          }}
+                        />
+                        <div className="no-cover-icon">
+                          {book.book_type === 'pdf' ? '📄' : book.book_type === 'website' ? '🌐' : '📖'}
+                        </div>
+                        {/* 左上にタイプバッジ */}
+                        <div
+                          className="book-type-badge"
+                          style={{
+                            background: book.book_type === 'pdf' ? '#ef4444'
+                              : book.book_type === 'website' ? '#10b981'
+                                : '#667eea'
+                          }}
+                        >
+                          {book.book_type === 'pdf' ? 'PDF' : book.book_type === 'website' ? 'WEB' : 'EPUB'}
+                        </div>
+                      </div>
+                      <div className="book-info">
+                        <h3>{book.title}</h3>
+                        <div className="meta">
+                          {book.book_type === 'pdf'
+                            ? `PDF${book.pdf_total_pages ? ` • ${book.pdf_total_pages}ページ` : ''}`
+                            : book.book_type === 'website'
+                              ? 'Webページ'
+                              : `${book.total_pages}ページ`}
+                          {book.current_page && book.current_page > 1 && (
+                            <> • {Math.round(getProgress(book))}% 読了</>
+                          )}
+                        </div>
+                        <div className="meta" style={{ fontSize: '0.75rem', marginTop: '4px' }}>
+                          🌐 {book.language === 'ja' ? '日本語' : book.language === 'en' ? '英語' : book.language || '英語'}
+                        </div>
+                        {/* タグ表示 */}
+                        {bookTags[book.id]?.length > 0 && (
+                          <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                            {bookTags[book.id].map(tag => (
+                              <span
+                                key={tag.id}
+                                style={{
+                                  padding: '2px 8px',
+                                  background: tag.color,
+                                  color: 'white',
+                                  borderRadius: '10px',
+                                  fontSize: '0.7rem'
+                                }}
+                              >
+                                {tag.name}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                        <div className="progress-bar">
+                          <div
+                            className="fill"
+                            style={{
+                              width: `${getProgress(book)}%`
+                            }}
+                          />
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                </div>
-              )})}
+                  )
+                })}
               </div>
-              
+
               {/* Pagination */}
               {totalLibraryPages > 1 && (
                 <div className="pagination">
@@ -771,7 +839,7 @@ function Home(): JSX.Element {
         <div className="modal-overlay" onClick={() => setShowTagManager(false)}>
           <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
             <h3>🏷️ タグ管理</h3>
-            
+
             <div style={{ marginBottom: '20px' }}>
               <div style={{ display: 'flex', gap: '8px', marginBottom: '10px' }}>
                 <input
@@ -869,14 +937,14 @@ function Home(): JSX.Element {
         <div className="modal-overlay" onClick={() => setEditingBook(null)}>
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             <h3>📚 書籍情報を編集</h3>
-            
+
             {/* Cover Image Section */}
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', marginBottom: '8px', fontWeight: 'bold', fontSize: '0.9rem' }}>
                 カバー画像
               </label>
               <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
-                <div 
+                <div
                   style={{
                     width: '100px',
                     height: '140px',
@@ -889,7 +957,7 @@ function Home(): JSX.Element {
                     flexShrink: 0
                   }}
                 >
-                  <img 
+                  <img
                     src={coverPreview || `/api/books/${editingBook.id}/cover?t=${Date.now()}`}
                     alt="カバー"
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -949,7 +1017,7 @@ function Home(): JSX.Element {
                 </div>
               </div>
             </div>
-            
+
             <div style={{ marginBottom: '15px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '0.9rem' }}>
                 タイトル
@@ -967,7 +1035,7 @@ function Home(): JSX.Element {
                 }}
               />
             </div>
-            
+
             <div style={{ marginBottom: '20px' }}>
               <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '0.9rem' }}>
                 言語（翻訳の元言語）
@@ -1056,13 +1124,145 @@ function Home(): JSX.Element {
                 </div>
               )}
             </div>
-            
+
             <div className="buttons">
               <button className="secondary" onClick={() => setEditingBook(null)}>
                 キャンセル
               </button>
               <button className="primary" onClick={saveBookEdit} disabled={uploadingCover}>
                 {uploadingCover ? '保存中...' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 複数ページ登録モーダル */}
+      {showMultiPageModal && (
+        <div className="modal-overlay" onClick={() => !savingMultiPage && setShowMultiPageModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <h3>📑 複数ページを連結して保存</h3>
+            <p style={{ color: '#666', fontSize: '0.9rem', marginBottom: '20px' }}>
+              「次のページ」リンクを辿って複数ページを連結保存します。
+            </p>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                🔗 開始URL <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                type="url"
+                value={multiPageUrl}
+                onChange={(e) => setMultiPageUrl(e.target.value)}
+                placeholder="https://example.com/page1"
+                disabled={savingMultiPage}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '1rem'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                🏷️ 次ページリンクのクラス名 <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <input
+                type="text"
+                value={linkClass}
+                onChange={(e) => setLinkClass(e.target.value)}
+                placeholder="例: next-page, pagination-next, next"
+                disabled={savingMultiPage}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '1rem'
+                }}
+              />
+              <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '5px' }}>
+                「次のページ」リンクに付いているCSSクラス名を指定
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '15px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                🚫 無視するパス（1行に1つ）
+              </label>
+              <textarea
+                value={ignorePaths}
+                onChange={(e) => setIgnorePaths(e.target.value)}
+                placeholder={`例:\n/api.html\n/about\n/contact\n*.pdf`}
+                disabled={savingMultiPage}
+                rows={4}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '0.9rem',
+                  resize: 'vertical'
+                }}
+              />
+              <p style={{ fontSize: '0.8rem', color: '#888', marginTop: '5px' }}>
+                このパスを含むURLは無視されます。*でワイルドカード指定可能
+              </p>
+            </div>
+
+            <div style={{ marginBottom: '20px' }}>
+              <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                📄 最大ページ数
+              </label>
+              <input
+                type="number"
+                value={maxPages}
+                onChange={(e) => setMaxPages(Math.max(1, Math.min(200, parseInt(e.target.value) || 50)))}
+                min={1}
+                max={200}
+                disabled={savingMultiPage}
+                style={{
+                  width: '100px',
+                  padding: '10px',
+                  border: '1px solid #ddd',
+                  borderRadius: '6px',
+                  fontSize: '1rem'
+                }}
+              />
+              <span style={{ marginLeft: '10px', color: '#666', fontSize: '0.9rem' }}>ページ（最大200）</span>
+            </div>
+
+            {multiPageProgress && (
+              <div style={{
+                marginBottom: '20px',
+                padding: '12px',
+                background: multiPageProgress.includes('完了') ? '#dcfce7' : '#f0f9ff',
+                borderRadius: '6px',
+                color: multiPageProgress.includes('完了') ? '#166534' : '#0369a1',
+                textAlign: 'center'
+              }}>
+                {multiPageProgress.includes('完了') ? '✅' : '⏳'} {multiPageProgress}
+              </div>
+            )}
+
+            <div className="buttons">
+              <button
+                className="secondary"
+                onClick={() => setShowMultiPageModal(false)}
+                disabled={savingMultiPage}
+              >
+                キャンセル
+              </button>
+              <button
+                className="primary"
+                onClick={handleSaveMultiPageUrl}
+                disabled={savingMultiPage || !multiPageUrl.trim() || !linkClass.trim()}
+                style={{ background: '#10b981' }}
+              >
+                {savingMultiPage ? '取得中...' : '連結して保存'}
               </button>
             </div>
           </div>
