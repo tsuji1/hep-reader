@@ -162,3 +162,4 @@ git add -A && git commit -m "test: 説明"      # テスト追加
 | 画像非表示 | `/api/books/:id/media/*` ルート確認 |
 | DB接続エラー | `data/` ディレクトリの権限確認 |
 | AI動作しない | 設定画面でAPIキーが登録されているか |
+

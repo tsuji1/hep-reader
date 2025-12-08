@@ -36,19 +36,19 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
   const [pageSize, setPageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 })
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null)
   const currentScaleRef = useRef<number>(scale)
-  
+
   // 高解像度対応の倍率
   const pixelRatio = window.devicePixelRatio || 1
-  
+
   // クリップ選択状態
   const [isSelecting, setIsSelecting] = useState<boolean>(false)
   const [selectionStart, setSelectionStart] = useState<{ x: number; y: number } | null>(null)
   const [selectionEnd, setSelectionEnd] = useState<{ x: number; y: number } | null>(null)
   const [lastSelection, setLastSelection] = useState<SelectionRect | null>(null)
-  
+
   // このページのクリップをフィルタ
   const pageClips = clips?.filter(c => c.page_num === pageNum) || []
-  
+
   // クリップ選択ハンドラー
   const handleMouseDown = (e: ReactMouseEvent<HTMLDivElement>): void => {
     if (!clipMode) return
@@ -61,7 +61,7 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
     setSelectionEnd({ x, y })
     setLastSelection(null)
   }
-  
+
   const handleMouseMove = (e: ReactMouseEvent<HTMLDivElement>): void => {
     if (!isSelecting || !clipMode) return
     const rect = e.currentTarget.getBoundingClientRect()
@@ -69,24 +69,24 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
     const y = Math.max(0, Math.min(e.clientY - rect.top, rect.height))
     setSelectionEnd({ x, y })
   }
-  
+
   const handleMouseUp = (): void => {
     if (!isSelecting || !clipMode || !selectionStart || !selectionEnd) {
       setIsSelecting(false)
       return
     }
-    
+
     // 選択範囲を計算
     const x = Math.min(selectionStart.x, selectionEnd.x)
     const y = Math.min(selectionStart.y, selectionEnd.y)
     const width = Math.abs(selectionEnd.x - selectionStart.x)
     const height = Math.abs(selectionEnd.y - selectionStart.y)
-    
+
     // 最小サイズチェック
     if (width > 10 && height > 10 && canvasRef.current) {
       // 選択範囲を保持（枠を表示し続ける）
       setLastSelection({ x, y, width, height })
-      
+
       try {
         // キャンバスから選択範囲を切り出し（高解像度対応）
         const canvas = canvasRef.current
@@ -97,12 +97,12 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
         const ctx = tempCanvas.getContext('2d')
         if (ctx) {
           ctx.drawImage(
-            canvas, 
-            x * pixelRatio, y * pixelRatio, width * pixelRatio, height * pixelRatio, 
+            canvas,
+            x * pixelRatio, y * pixelRatio, width * pixelRatio, height * pixelRatio,
             0, 0, width * pixelRatio, height * pixelRatio
           )
           const imageData = tempCanvas.toDataURL('image/png')
-          
+
           if (onClipCapture) {
             // 選択位置情報も一緒に渡す（ページサイズに対する比率で保存）
             const positionInfo: ClipPosition = {
@@ -118,19 +118,19 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
         console.error('クリップキャプチャエラー:', err)
       }
     }
-    
+
     setIsSelecting(false)
     setSelectionStart(null)
     setSelectionEnd(null)
   }
-  
+
   // クリップモードを解除したら選択枠もクリア
   useEffect(() => {
     if (!clipMode) {
       setLastSelection(null)
     }
   }, [clipMode])
-  
+
   // 選択範囲の矩形を計算
   const getSelectionRect = (): { left: number; top: number; width: number; height: number } | null => {
     if (isSelecting && selectionStart && selectionEnd) {
@@ -167,7 +167,7 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
       try {
         const page = await pdf.getPage(pageNum)
         const viewport = page.getViewport({ scale })
-        
+
         setPageSize({ width: viewport.width, height: viewport.height })
 
         const canvas = canvasRef.current
@@ -175,13 +175,13 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
 
         const context = canvas.getContext('2d')
         if (!context) return
-        
+
         // 高解像度対応：canvasの実際のサイズを大きくし、CSSで表示サイズを設定
         canvas.width = viewport.width * pixelRatio
         canvas.height = viewport.height * pixelRatio
         canvas.style.width = `${viewport.width}px`
         canvas.style.height = `${viewport.height}px`
-        
+
         // コンテキストをスケール
         context.scale(pixelRatio, pixelRatio)
 
@@ -254,9 +254,9 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
   const selectionRect = getSelectionRect()
 
   return (
-    <div 
+    <div
       className={`pdf-page-wrapper ${clipMode ? 'clip-mode' : ''}`}
-      style={{ 
+      style={{
         width: pageSize.width || 'auto',
         height: pageSize.height || 600,
         position: 'relative',
@@ -276,7 +276,7 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
       )}
       {/* クリップ選択オーバーレイ */}
       {clipMode && selectionRect && (
-        <div 
+        <div
           className="clip-selection-overlay"
           style={{
             position: 'absolute',
@@ -322,7 +322,7 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
           top: `${10 + pageClips.indexOf(clip) * 35}px`,
           zIndex: 10
         }
-        
+
         return (
           <button
             key={clip.id}
@@ -379,15 +379,15 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
           cMapPacked: CMAP_PACKED,
         })
         const pdfDoc = await loadingTask.promise
-        
+
         if (!isMounted) return
-        
+
         setPdf(pdfDoc)
         setTotalPages(pdfDoc.numPages)
         if (onTotalPagesChange) {
           onTotalPagesChange(pdfDoc.numPages)
         }
-        
+
         // テキスト抽出（現在ページ周辺）
         if (onPageTextExtracted) {
           const extractTexts = async () => {
@@ -411,14 +411,14 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
           }
           extractTexts()
         }
-        
+
         // 初期表示ページを設定
         const initialVisible: Record<number, boolean> = {}
         for (let i = Math.max(1, currentPage - 2); i <= Math.min(pdfDoc.numPages, currentPage + 2); i++) {
           initialVisible[i] = true
         }
         setVisiblePages(initialVisible)
-        
+
         setLoading(false)
       } catch (error) {
         console.error('PDF load error:', error)
@@ -447,7 +447,7 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
   // ページ変更時にテキスト抽出
   useEffect(() => {
     if (!pdf || !onPageTextExtracted) return
-    
+
     const extractTexts = async () => {
       const pageRange = [currentPage - 2, currentPage - 1, currentPage, currentPage + 1, currentPage + 2]
       let hasNew = false
@@ -566,6 +566,25 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
     }
   }, [])
 
+  // 初期ページへのスクロール（PDFロード完了後）
+  const initialPageRef = useRef<number>(currentPage)
+  const hasInitialScrolled = useRef<boolean>(false)
+
+  useEffect(() => {
+    // PDFロード完了後、初期ページにスクロール
+    if (!loading && pdf && viewMode === 'scroll' && !hasInitialScrolled.current && initialPageRef.current > 1) {
+      hasInitialScrolled.current = true
+      // DOM が準備されるまで少し待つ
+      setTimeout(() => {
+        const pageEl = pageRefs.current[initialPageRef.current]
+        if (pageEl) {
+          pageEl.scrollIntoView({ behavior: 'auto', block: 'start' })
+          console.log('[PdfViewer] Scrolled to initial page:', initialPageRef.current)
+        }
+      }, 100)
+    }
+  }, [loading, pdf, viewMode])
+
   // currentPageが変わったらスクロール（外部からのページ変更時のみ）
   const lastExternalPage = useRef<number>(currentPage)
   useEffect(() => {
@@ -574,14 +593,20 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
       lastExternalPage.current = currentPage
       return
     }
-    
+
     // スクロール検出による変更の場合はスクロールしない
     if (isScrollDetectedChange.current) {
       isScrollDetectedChange.current = false
       lastExternalPage.current = currentPage
       return
     }
-    
+
+    // 初期スクロール中はスキップ
+    if (!hasInitialScrolled.current && initialPageRef.current > 1) {
+      lastExternalPage.current = currentPage
+      return
+    }
+
     // 外部からページが変更された場合のみスクロール（ナビボタン等）
     if (currentPage !== lastExternalPage.current && pageRefs.current[currentPage]) {
       scrollToPage(currentPage)

@@ -8,6 +8,9 @@ import PdfViewer from '../components/PdfViewer'
 import type { Book, Bookmark, Clip, ClipPosition, PageContent, TocItem } from '../types'
 import { fixEpubImagePaths, openClipInNewWindow, openImageInNewWindow } from '../utils/window'
 
+// Suppress highlight.js warnings for unescaped HTML
+hljs.configure({ ignoreUnescapedHTML: true })
+
 type SidebarTab = 'toc' | 'bookmarks' | 'clips'
 type ViewMode = 'scroll' | 'page'
 
@@ -52,12 +55,15 @@ function Reader(): JSX.Element {
   const contentRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const isScrollingToPage = useRef<boolean>(false)
-  const hasInitialScrolled = useRef<boolean>(false)
+  const initialPageRef = useRef<number>(1)
 
   // Fetch book info and all pages
   useEffect(() => {
     const fetchBook = async (): Promise<void> => {
       if (!bookId) return
+
+      // Reset initial page ref at the start of fetch
+      initialPageRef.current = 1
 
       try {
         const res = await axios.get<Book>(`/api/books/${bookId}`)
@@ -70,8 +76,9 @@ function Reader(): JSX.Element {
         if (isPdfBook) {
           setIsPdf(true)
           // PDFの読み込み進捗を取得
-          const progressRes = await axios.get<{ currentPage: number }>(`/api/books/${bookId}/progress`)
-          const initialPage = progressRes.data.currentPage || 1
+          const progressRes = await axios.get<{ current_page: number }>(`/api/books/${bookId}/progress`)
+          const initialPage = progressRes.data.current_page || 1
+          console.log('[fetchBook PDF] Setting currentPage to:', initialPage)
           setCurrentPage(initialPage)
           fetchBookmarks()
           fetchClips()
@@ -85,8 +92,10 @@ function Reader(): JSX.Element {
         setTotalPages(pagesRes.data.total)
 
         // Determine initial page from saved progress
-        const progressRes = await axios.get<{ currentPage: number }>(`/api/books/${bookId}/progress`)
-        const initialPage = progressRes.data.currentPage || 1
+        const progressRes = await axios.get<{ current_page: number }>(`/api/books/${bookId}/progress`)
+        const initialPage = progressRes.data.current_page || 1
+        console.log('[fetchBook] Setting initialPageRef to:', initialPage)
+        initialPageRef.current = initialPage
         setCurrentPage(initialPage)
 
         // Fetch TOC
@@ -108,20 +117,45 @@ function Reader(): JSX.Element {
     fetchBook()
   }, [bookId])
 
-  // Reset initial scroll flag when book changes
-  useEffect(() => {
-    hasInitialScrolled.current = false
-  }, [bookId])
-
   // Scroll to initial page after pages are loaded
   useEffect(() => {
-    if (!loading && pages.length > 0 && currentPage > 1 && !isPdf && !hasInitialScrolled.current) {
-      hasInitialScrolled.current = true
-      setTimeout(() => {
-        scrollToPage(currentPage, false)
-      }, 100)
+    console.log('[Scroll Effect] loading:', loading, 'isPdf:', isPdf, 'pages.length:', pages.length, 'initialPageRef:', initialPageRef.current)
+
+    // Only run when loading completes (transitions from true to false)
+    if (loading || isPdf) {
+      console.log('[Scroll Effect] Skipped: loading or isPdf')
+      return
     }
-  }, [loading, pages.length, currentPage, isPdf])
+
+    const targetPage = initialPageRef.current
+    if (targetPage <= 1 || pages.length === 0) {
+      console.log('[Scroll Effect] Skipped: targetPage <= 1 or no pages')
+      return
+    }
+
+    console.log('[Scroll Effect] Will scroll to page:', targetPage)
+    initialPageRef.current = 1 // Reset to prevent re-scrolling
+
+    // Wait for DOM to be ready
+    const attemptScroll = (retries: number): void => {
+      const pageEl = pageRefs.current[targetPage]
+      console.log(`[Scroll Effect] attemptScroll: targetPage=${targetPage}, element found=${!!pageEl}, retries=${retries}`)
+      if (pageEl) {
+        pageEl.scrollIntoView({ behavior: 'auto', block: 'start' })
+        console.log(`[Scroll Effect] Scrolled to page ${targetPage}`)
+      } else if (retries > 0) {
+        // Retry if element not found yet
+        setTimeout(() => attemptScroll(retries - 1), 100)
+      } else {
+        console.warn(`[Scroll Effect] Could not find page element for page ${targetPage}`)
+      }
+    }
+
+    // Use requestAnimationFrame to ensure DOM is updated
+    requestAnimationFrame(() => {
+      attemptScroll(10) // Try up to 10 times
+    })
+  }, [loading, isPdf, pages.length])
 
   // Apply syntax highlighting
   useEffect(() => {
@@ -140,6 +174,13 @@ function Reader(): JSX.Element {
         });
 
         document.querySelectorAll('pre code').forEach((block) => {
+          const el = block as HTMLElement
+
+          // 既にハイライト済みの場合はスキップ
+          if (el.dataset.highlighted === 'yes') {
+            return
+          }
+
           // クラス名がない場合は自動検出を試みる
           if (!block.className && block.parentElement?.className) {
             // 親のpreにクラスがある場合、それを継承する (例: class="code lang-c")
@@ -151,7 +192,7 @@ function Reader(): JSX.Element {
             block.className = block.className.replace(/lang-([a-zA-Z0-9_-]+)/, 'language-$1');
           }
 
-          hljs.highlightElement(block as HTMLElement)
+          hljs.highlightElement(el)
         })
       }, 100)
     }
