@@ -574,12 +574,10 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
     // PDFロード完了後、初期ページにスクロール
     if (!loading && pdf && viewMode === 'scroll' && !hasInitialScrolled.current && initialPageRef.current > 1) {
       hasInitialScrolled.current = true
-      // DOM が準備されるまで少し待つ
       setTimeout(() => {
         const pageEl = pageRefs.current[initialPageRef.current]
         if (pageEl) {
           pageEl.scrollIntoView({ behavior: 'auto', block: 'start' })
-          console.log('[PdfViewer] Scrolled to initial page:', initialPageRef.current)
         }
       }, 100)
     }

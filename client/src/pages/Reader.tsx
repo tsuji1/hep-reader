@@ -78,7 +78,6 @@ function Reader(): JSX.Element {
           // PDFの読み込み進捗を取得
           const progressRes = await axios.get<{ current_page: number }>(`/api/books/${bookId}/progress`)
           const initialPage = progressRes.data.current_page || 1
-          console.log('[fetchBook PDF] Setting currentPage to:', initialPage)
           setCurrentPage(initialPage)
           fetchBookmarks()
           fetchClips()
@@ -94,7 +93,6 @@ function Reader(): JSX.Element {
         // Determine initial page from saved progress
         const progressRes = await axios.get<{ current_page: number }>(`/api/books/${bookId}/progress`)
         const initialPage = progressRes.data.current_page || 1
-        console.log('[fetchBook] Setting initialPageRef to:', initialPage)
         initialPageRef.current = initialPage
         setCurrentPage(initialPage)
 
@@ -119,41 +117,25 @@ function Reader(): JSX.Element {
 
   // Scroll to initial page after pages are loaded
   useEffect(() => {
-    console.log('[Scroll Effect] loading:', loading, 'isPdf:', isPdf, 'pages.length:', pages.length, 'initialPageRef:', initialPageRef.current)
-
-    // Only run when loading completes (transitions from true to false)
-    if (loading || isPdf) {
-      console.log('[Scroll Effect] Skipped: loading or isPdf')
-      return
-    }
+    if (loading || isPdf) return
 
     const targetPage = initialPageRef.current
-    if (targetPage <= 1 || pages.length === 0) {
-      console.log('[Scroll Effect] Skipped: targetPage <= 1 or no pages')
-      return
-    }
+    if (targetPage <= 1 || pages.length === 0) return
 
-    console.log('[Scroll Effect] Will scroll to page:', targetPage)
     initialPageRef.current = 1 // Reset to prevent re-scrolling
 
     // Wait for DOM to be ready
     const attemptScroll = (retries: number): void => {
       const pageEl = pageRefs.current[targetPage]
-      console.log(`[Scroll Effect] attemptScroll: targetPage=${targetPage}, element found=${!!pageEl}, retries=${retries}`)
       if (pageEl) {
         pageEl.scrollIntoView({ behavior: 'auto', block: 'start' })
-        console.log(`[Scroll Effect] Scrolled to page ${targetPage}`)
       } else if (retries > 0) {
-        // Retry if element not found yet
         setTimeout(() => attemptScroll(retries - 1), 100)
-      } else {
-        console.warn(`[Scroll Effect] Could not find page element for page ${targetPage}`)
       }
     }
 
-    // Use requestAnimationFrame to ensure DOM is updated
     requestAnimationFrame(() => {
-      attemptScroll(10) // Try up to 10 times
+      attemptScroll(10)
     })
   }, [loading, isPdf, pages.length])
 
