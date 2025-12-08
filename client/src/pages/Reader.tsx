@@ -5,7 +5,8 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react
 import { Link, useParams } from 'react-router-dom'
 import AiChat from '../components/AiChat'
 import PdfViewer from '../components/PdfViewer'
-import type { Book, Bookmark, Clip, ClipPosition, PageContent, TocItem } from '../types'
+import { EditableContent, InsertedNote, InsertNoteButton, type NoteData } from '../editor'
+import type { Book, Bookmark, Clip, ClipPosition, Note, PageContent, TocItem } from '../types'
 import { fixEpubImagePaths, openClipInNewWindow, openImageInNewWindow } from '../utils/window'
 
 // Suppress highlight.js warnings for unescaped HTML
@@ -52,6 +53,10 @@ function Reader(): JSX.Element {
   const [savingTranslation, setSavingTranslation] = useState<boolean>(false)
   const [translatedPages, setTranslatedPages] = useState<Set<number>>(new Set())
 
+  // 編集機能
+  const [editMode, setEditMode] = useState<boolean>(false)
+  const [notes, setNotes] = useState<Note[]>([])
+
   const contentRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const isScrollingToPage = useRef<boolean>(false)
@@ -81,6 +86,7 @@ function Reader(): JSX.Element {
           setCurrentPage(initialPage)
           fetchBookmarks()
           fetchClips()
+          fetchNotes()
           setLoading(false)
           return
         }
@@ -100,9 +106,10 @@ function Reader(): JSX.Element {
         const tocRes = await axios.get<{ toc: TocItem[] }>(`/api/books/${bookId}/toc`)
         setToc(tocRes.data.toc || [])
 
-        // Fetch bookmarks, clips, and translation status
+        // Fetch bookmarks, clips, notes and translation status
         fetchBookmarks()
         fetchClips()
+        fetchNotes()
         fetchTranslationStatus()
 
         setLoading(false)
@@ -269,6 +276,54 @@ function Reader(): JSX.Element {
       // 翻訳状態の取得に失敗しても致命的ではない
       console.error('Failed to fetch translation status:', error)
     }
+  }
+
+  const fetchNotes = async (): Promise<void> => {
+    try {
+      const res = await axios.get<Note[]>(`/api/books/${bookId}/notes`)
+      setNotes(res.data)
+    } catch (error) {
+      console.error('Failed to fetch notes:', error)
+    }
+  }
+
+  // ノートを保存
+  const saveNote = async (noteData: NoteData): Promise<void> => {
+    await axios.put(`/api/notes/${noteData.id}`, {
+      content: noteData.content
+    })
+    await fetchNotes()
+  }
+
+  // ノートを削除
+  const deleteNote = async (noteId: string): Promise<void> => {
+    await axios.delete(`/api/notes/${noteId}`)
+    await fetchNotes()
+  }
+
+  // 新しいノートを追加
+  const addNote = async (pageNum: number): Promise<void> => {
+    const notesOnPage = notes.filter(n => n.page_num === pageNum)
+    const position = notesOnPage.length > 0
+      ? Math.max(...notesOnPage.map(n => n.position)) + 1
+      : 0
+
+    await axios.post(`/api/books/${bookId}/notes`, {
+      pageNum,
+      content: '',
+      position
+    })
+    await fetchNotes()
+  }
+
+  // EPUB/Webのコンテンツを保存
+  const savePageContent = async (pageNum: number, content: string): Promise<void> => {
+    await axios.post(`/api/books/${bookId}/page/${pageNum}/save-edit`, {
+      content
+    })
+    // ページを再取得して更新を反映
+    const pagesRes = await axios.get<{ pages: PageContent[]; total: number }>(`/api/books/${bookId}/all-pages`)
+    setPages(pagesRes.data.pages)
   }
 
   const scrollToPage = (page: number, smooth: boolean = true): void => {
@@ -877,6 +932,23 @@ function Reader(): JSX.Element {
                 <span className="clip-mode-indicator">📷 ドラッグで選択</span>
               )}
 
+              {/* 編集モードボタン（EPUB/Webのみ） */}
+              {!isPdf && (
+                <button
+                  className={`secondary ${editMode ? 'active' : ''}`}
+                  onClick={() => setEditMode(!editMode)}
+                  title={editMode ? '編集モードを終了' : '編集モードに切り替え'}
+                  style={{
+                    fontSize: '0.85rem',
+                    padding: '6px 10px',
+                    background: editMode ? '#22c55e' : undefined,
+                    color: editMode ? 'white' : undefined
+                  }}
+                >
+                  ✏️ {editMode ? '編集中' : '編集'}
+                </button>
+              )}
+
               {/* 翻訳保存ボタン（EPUB/Webのみ） */}
               {!isPdf && (
                 <div className="translation-controls" style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
@@ -987,44 +1059,134 @@ function Reader(): JSX.Element {
           {loading ? (
             <div className="loading">読み込み中</div>
           ) : isPdf ? (
-            <PdfViewer
-              pdfUrl={`/api/books/${bookId}/pdf`}
-              currentPage={currentPage}
-              onPageChange={handlePdfPageChange}
-              onTotalPagesChange={handlePdfTotalPages}
-              onPageTextExtracted={setPdfPageTexts}
-              viewMode={viewMode}
-              clipMode={clipMode}
-              onClipCapture={handleClipCapture}
-              clips={clips}
-              onClipClick={openClipInNewWindow}
-              scale={pdfScale}
-            />
+            <div className="pdf-with-notes">
+              <PdfViewer
+                pdfUrl={`/api/books/${bookId}/pdf`}
+                currentPage={currentPage}
+                onPageChange={handlePdfPageChange}
+                onTotalPagesChange={handlePdfTotalPages}
+                onPageTextExtracted={setPdfPageTexts}
+                viewMode={viewMode}
+                clipMode={clipMode}
+                onClipCapture={handleClipCapture}
+                clips={clips}
+                onClipClick={openClipInNewWindow}
+                scale={pdfScale}
+              />
+
+              {/* PDF用差し込みノート */}
+              <div className="pdf-notes-section">
+                {notes.filter(n => n.page_num === currentPage).map(note => (
+                  <InsertedNote
+                    key={note.id}
+                    note={{
+                      id: note.id,
+                      bookId: note.book_id,
+                      pageNum: note.page_num,
+                      content: note.content,
+                      position: note.position,
+                      createdAt: note.created_at,
+                      updatedAt: note.updated_at
+                    }}
+                    onSave={saveNote}
+                    onDelete={deleteNote}
+                  />
+                ))}
+                <InsertNoteButton onClick={() => addNote(currentPage)} />
+              </div>
+            </div>
           ) : viewMode === 'scroll' ? (
             <div className="content-continuous">
-              {pages.map((page) => (
-                <div
-                  key={page.pageNum}
-                  ref={(el) => { pageRefs.current[page.pageNum] = el }}
-                  className={`page-section ${page.pageNum === currentPage ? 'current' : ''}`}
-                  data-page={page.pageNum}
-                >
+              {pages.map((page) => {
+                const pageNotes = notes.filter(n => n.page_num === page.pageNum)
+                return (
                   <div
-                    className="content-html clickable-images"
-                    lang={book.language || 'en'}
-                    dangerouslySetInnerHTML={{ __html: fixContent(page.content) }}
-                  />
-                </div>
-              ))}
+                    key={page.pageNum}
+                    ref={(el) => { pageRefs.current[page.pageNum] = el }}
+                    className={`page-section ${page.pageNum === currentPage ? 'current' : ''}`}
+                    data-page={page.pageNum}
+                  >
+                    {editMode ? (
+                      <EditableContent
+                        content={fixContent(page.content)}
+                        pageNum={page.pageNum}
+                        bookId={bookId || ''}
+                        onSave={savePageContent}
+                        lang={book.language || 'en'}
+                      />
+                    ) : (
+                      <div
+                        className="content-html clickable-images"
+                        lang={book.language || 'en'}
+                        dangerouslySetInnerHTML={{ __html: fixContent(page.content) }}
+                      />
+                    )}
+
+                    {/* 差し込みノート */}
+                    {pageNotes.map(note => (
+                      <InsertedNote
+                        key={note.id}
+                        note={{
+                          id: note.id,
+                          bookId: note.book_id,
+                          pageNum: note.page_num,
+                          content: note.content,
+                          position: note.position,
+                          createdAt: note.created_at,
+                          updatedAt: note.updated_at
+                        }}
+                        onSave={saveNote}
+                        onDelete={deleteNote}
+                      />
+                    ))}
+
+                    {/* ノート追加ボタン */}
+                    <InsertNoteButton onClick={() => addNote(page.pageNum)} />
+                  </div>
+                )
+              })}
             </div>
           ) : (
             <div className="content-single-page">
               {pages[currentPage - 1] && (
-                <div
-                  className="content-html clickable-images"
-                  lang={book.language || 'en'}
-                  dangerouslySetInnerHTML={{ __html: fixContent(pages[currentPage - 1].content) }}
-                />
+                <>
+                  {editMode ? (
+                    <EditableContent
+                      content={fixContent(pages[currentPage - 1].content)}
+                      pageNum={currentPage}
+                      bookId={bookId || ''}
+                      onSave={savePageContent}
+                      lang={book.language || 'en'}
+                    />
+                  ) : (
+                    <div
+                      className="content-html clickable-images"
+                      lang={book.language || 'en'}
+                      dangerouslySetInnerHTML={{ __html: fixContent(pages[currentPage - 1].content) }}
+                    />
+                  )}
+
+                  {/* 差し込みノート */}
+                  {notes.filter(n => n.page_num === currentPage).map(note => (
+                    <InsertedNote
+                      key={note.id}
+                      note={{
+                        id: note.id,
+                        bookId: note.book_id,
+                        pageNum: note.page_num,
+                        content: note.content,
+                        position: note.position,
+                        createdAt: note.created_at,
+                        updatedAt: note.updated_at
+                      }}
+                      onSave={saveNote}
+                      onDelete={deleteNote}
+                    />
+                  ))}
+
+                  {/* ノート追加ボタン */}
+                  <InsertNoteButton onClick={() => addNote(currentPage)} />
+                </>
               )}
             </div>
           )}

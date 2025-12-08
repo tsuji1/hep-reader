@@ -1645,6 +1645,113 @@ app.delete('/api/clips/:clipId', (req: Request, res: Response) => {
   }
 });
 
+// ===== Notes API (差し込みエディタ) =====
+
+// Get notes for a book
+app.get('/api/books/:bookId/notes', (req: Request, res: Response) => {
+  try {
+    const notes = db.getNotes(req.params.bookId);
+    res.json(notes);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Add note to a book
+app.post('/api/books/:bookId/notes', (req: Request, res: Response) => {
+  try {
+    const { pageNum, content, position } = req.body as {
+      pageNum: number;
+      content?: string;
+      position?: number;
+    };
+    if (typeof pageNum !== 'number') {
+      return res.status(400).json({ error: 'pageNum is required' });
+    }
+    const note = db.addNote(req.params.bookId, pageNum, content || '', position || 0);
+    res.json(note);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Update note
+app.put('/api/notes/:noteId', (req: Request, res: Response) => {
+  try {
+    const { content } = req.body as { content: string };
+    if (typeof content !== 'string') {
+      return res.status(400).json({ error: 'content is required' });
+    }
+    const note = db.updateNote(req.params.noteId, content);
+    if (!note) {
+      return res.status(404).json({ error: 'Note not found' });
+    }
+    res.json(note);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Delete note
+app.delete('/api/notes/:noteId', (req: Request, res: Response) => {
+  try {
+    db.deleteNote(req.params.noteId);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Save edited page content (EPUB/Web編集)
+app.post('/api/books/:bookId/page/:pageNum/save-edit', (req: Request, res: Response) => {
+  try {
+    const { bookId, pageNum } = req.params;
+    const { content } = req.body as { content: string };
+
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({ error: 'Content is required' });
+    }
+
+    const pagesDir = path.join(convertedDir, bookId, 'pages');
+    const pagePath = path.join(pagesDir, `page-${pageNum}.html`);
+
+    if (!fs.existsSync(pagePath)) {
+      return res.status(404).json({ error: 'Page not found' });
+    }
+
+    // 元のHTMLを読み込んでbody部分を置換
+    const originalHtml = fs.readFileSync(pagePath, 'utf8');
+
+    // head部分を抽出
+    const headMatch = originalHtml.match(/<head[^>]*>[\s\S]*?<\/head>/i);
+    const headContent = headMatch ? headMatch[0] : '<head><meta charset="UTF-8"></head>';
+
+    // 新しいHTMLを構築
+    const newHtml = `<!DOCTYPE html>
+<html>
+${headContent}
+<body>
+  ${content}
+</body>
+</html>`;
+
+    // バックアップを作成（初回のみ）
+    const backupPath = path.join(pagesDir, `page-${pageNum}.edit-backup.html`);
+    if (!fs.existsSync(backupPath)) {
+      fs.writeFileSync(backupPath, originalHtml);
+    }
+
+    // 編集されたコンテンツを保存
+    fs.writeFileSync(pagePath, newHtml);
+
+    console.log(`Saved edited page: ${bookId}/page-${pageNum}`);
+    res.json({ success: true, message: 'Edit saved' });
+  } catch (error) {
+    console.error('Save edit error:', error);
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // Generate clip description using AI
 app.post('/api/ai/generate-clip-description', async (req: Request, res: Response) => {
   try {

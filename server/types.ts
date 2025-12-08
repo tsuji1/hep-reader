@@ -109,3 +109,14 @@ export interface AllPagesResponse {
   pages: PageContent[];
   total: number;
 }
+
+// Note types (差し込みエディタ用)
+export interface Note {
+  id: string;
+  book_id: string;
+  page_num: number;
+  content: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}

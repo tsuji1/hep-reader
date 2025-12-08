@@ -1,0 +1,512 @@
+/* Tiptap Editor Styles */
+.tiptap-editor {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.tiptap-toolbar-container {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tiptap-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.tiptap-toolbar button,
+.tiptap-toolbar-extra button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: #475569;
+  transition: all 0.15s ease;
+}
+
+.tiptap-toolbar button:hover,
+.tiptap-toolbar-extra button:hover {
+  background: #e2e8f0;
+  color: #1e293b;
+}
+
+.tiptap-toolbar button.active {
+  background: #667eea;
+  color: white;
+}
+
+.tiptap-toolbar button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: #e2e8f0;
+  margin: 0 4px;
+}
+
+.tiptap-toolbar-extra {
+  display: flex;
+  gap: 4px;
+}
+
+.tiptap-content {
+  padding: 16px;
+  min-height: 200px;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* ProseMirror specific styles */
+.tiptap-content .ProseMirror {
+  outline: none;
+  line-height: 1.7;
+}
+
+.tiptap-content .ProseMirror>*+* {
+  margin-top: 0.75em;
+}
+
+.tiptap-content .ProseMirror p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  color: #94a3b8;
+  pointer-events: none;
+  height: 0;
+}
+
+.tiptap-content .ProseMirror h1 {
+  font-size: 2em;
+  font-weight: 700;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.tiptap-content .ProseMirror h2 {
+  font-size: 1.5em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.tiptap-content .ProseMirror h3 {
+  font-size: 1.25em;
+  font-weight: 600;
+  margin-top: 1em;
+  margin-bottom: 0.5em;
+}
+
+.tiptap-content .ProseMirror ul,
+.tiptap-content .ProseMirror ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.tiptap-content .ProseMirror li {
+  margin: 0.25em 0;
+}
+
+.tiptap-content .ProseMirror blockquote {
+  border-left: 4px solid #667eea;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #64748b;
+  font-style: italic;
+}
+
+.tiptap-content .ProseMirror code {
+  background: #f1f5f9;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.9em;
+}
+
+.tiptap-content .ProseMirror pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.9em;
+  line-height: 1.5;
+}
+
+.tiptap-content .ProseMirror pre code {
+  background: none;
+  padding: 0;
+  color: inherit;
+}
+
+.tiptap-content .ProseMirror hr {
+  border: none;
+  border-top: 2px solid #e2e8f0;
+  margin: 1.5em 0;
+}
+
+.tiptap-content .ProseMirror img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 1em 0;
+}
+
+.tiptap-content .ProseMirror a {
+  color: #667eea;
+  text-decoration: underline;
+}
+
+.tiptap-content .ProseMirror a:hover {
+  color: #5a67d8;
+}
+
+/* 数式 (Mathematics) */
+.tiptap-content .tiptap-mathematics-render {
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: background 0.15s ease;
+}
+
+.tiptap-content .tiptap-mathematics-render:hover {
+  background: #f0f4ff;
+}
+
+.tiptap-content .tiptap-mathematics-render--editable {
+  cursor: text;
+}
+
+.tiptap-content .tiptap-mathematics-render[data-type="block-math"] {
+  display: block;
+  text-align: center;
+  padding: 16px;
+  margin: 16px 0;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.tiptap-content .tiptap-mathematics-render[data-type="inline-math"] {
+  display: inline;
+}
+
+/* 読み取り専用モード */
+.tiptap-editor.readonly .tiptap-content {
+  background: #fafafa;
+}
+
+/* インライン編集モード用 */
+.tiptap-inline {
+  border: none;
+  border-radius: 0;
+}
+
+.tiptap-inline .tiptap-toolbar-container {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.tiptap-inline .tiptap-content {
+  min-height: auto;
+  max-height: none;
+  padding: 0;
+}
+
+/* ページ差し込み用エディタ */
+.inserted-editor {
+  max-width: 1200px;
+  width: 100%;
+  margin: 16px auto;
+  padding: 0;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  position: relative;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  box-sizing: border-box;
+}
+
+.inserted-editor:hover {
+  border-color: #667eea;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.inserted-editor .tiptap-toolbar-container {
+  background: #f8fafc;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.inserted-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.inserted-editor-header .note-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.inserted-editor-header .note-actions {
+  display: flex;
+  gap: 8px;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.inserted-editor:hover .inserted-editor-header .note-actions {
+  opacity: 1;
+}
+
+.inserted-editor-header button {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.15s ease;
+}
+
+.inserted-editor-header button:hover {
+  background: #e2e8f0;
+  color: #334155;
+}
+
+.inserted-editor-header button.delete-btn:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* EPUB/Web編集モード */
+.editable-content {
+  position: relative;
+}
+
+.editable-content .edit-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 100;
+  padding: 8px 16px;
+  background: #667eea;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.875rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+.editable-content .edit-toggle:hover {
+  background: #5a67d8;
+}
+
+.editable-content .edit-toggle.editing {
+  background: #22c55e;
+}
+
+/* 差し込みボタン */
+.insert-editor-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  max-width: 1200px;
+  width: 100%;
+  margin: 8px auto;
+  padding: 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: transparent;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: all 0.2s ease;
+  opacity: 0;
+  height: 24px;
+  box-sizing: border-box;
+}
+
+.insert-editor-button:hover,
+.page-section:hover .insert-editor-button,
+.content-single-page:hover .insert-editor-button,
+.pdf-notes-section:hover .insert-editor-button {
+  opacity: 1;
+  color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.insert-editor-button:hover {
+  color: #667eea;
+  background: #eef2ff;
+}
+
+.insert-editor-button .icon {
+  margin-right: 6px;
+  font-size: 1em;
+}
+
+/* PDF用ノートセクション */
+.pdf-notes-section {
+  padding: 16px 20px;
+}
+
+.pdf-notes-section .insert-editor-button {
+  margin-top: 8px;
+}
+
+/* 編集アクション */
+.editable-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 12px 16px;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+}
+
+.editable-actions button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.editable-actions .cancel-btn {
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.editable-actions .cancel-btn:hover {
+  background: #cbd5e1;
+}
+
+.editable-actions .save-btn {
+  background: #667eea;
+  color: white;
+}
+
+.editable-actions .save-btn:hover {
+  background: #5a67d8;
+}
+
+.editable-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* 編集可能コンテンツのエディタコンテナ */
+.editable-editor-container {
+  border: 2px solid #667eea;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-top: 40px;
+}
+
+.editable-editor-container .tiptap-inline {
+  border: none;
+}
+
+.editable-editor-container .tiptap-content {
+  min-height: 200px;
+  padding: 16px;
+}
+
+/* 差し込みノートのコンテンツ */
+.inserted-note-content {
+  padding: 16px;
+  line-height: 1.7;
+  cursor: pointer;
+  min-height: 40px;
+  transition: background 0.15s ease;
+}
+
+.inserted-note-content:hover {
+  background: #f8fafc;
+}
+
+.inserted-note-content h1,
+.inserted-note-content h2,
+.inserted-note-content h3 {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.inserted-note-content h1:first-child,
+.inserted-note-content h2:first-child,
+.inserted-note-content h3:first-child {
+  margin-top: 0;
+}
+
+.inserted-note-content p {
+  margin: 0.5em 0;
+}
+
+.inserted-note-content p:first-child {
+  margin-top: 0;
+}
+
+.inserted-note-content p:last-child {
+  margin-bottom: 0;
+}
+
+.inserted-note-content ul,
+.inserted-note-content ol {
+  padding-left: 1.5em;
+  margin: 0.5em 0;
+}
+
+.inserted-note-content code {
+  background: #f1f5f9;
+  padding: 0.2em 0.4em;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 0.9em;
+}
+
+.inserted-note-content pre {
+  background: #1e293b;
+  color: #e2e8f0;
+  padding: 1em;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+}
+
+.inserted-note-content blockquote {
+  border-left: 4px solid #667eea;
+  padding-left: 1em;
+  margin: 0.5em 0;
+  color: #64748b;
+  font-style: italic;
+}

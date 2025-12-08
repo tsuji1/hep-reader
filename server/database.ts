@@ -153,6 +153,22 @@ db.exec(`
   );
 `);
 
+// Notes table (差し込みエディタ用)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS notes (
+    id TEXT PRIMARY KEY,
+    book_id TEXT NOT NULL,
+    page_num INTEGER NOT NULL,
+    content TEXT DEFAULT '',
+    position INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (book_id) REFERENCES books(id) ON DELETE CASCADE
+  );
+  CREATE INDEX IF NOT EXISTS idx_notes_book_id ON notes(book_id);
+  CREATE INDEX IF NOT EXISTS idx_notes_page ON notes(book_id, page_num);
+`);
+
 // Books
 export function addBook(
   id: string,
@@ -211,7 +227,7 @@ export function deleteBook(id: string): void {
 export function updateBook(id: string, { title, language, ai_context }: BookInput): Book | null {
   const updates: string[] = [];
   const values: (string | undefined)[] = [];
-  
+
   if (title !== undefined) {
     updates.push('title = ?');
     values.push(title);
@@ -224,12 +240,12 @@ export function updateBook(id: string, { title, language, ai_context }: BookInpu
     updates.push('ai_context = ?');
     values.push(ai_context);
   }
-  
+
   if (updates.length === 0) return null;
-  
+
   updates.push('updated_at = CURRENT_TIMESTAMP');
   values.push(id);
-  
+
   const stmt = db.prepare(`UPDATE books SET ${updates.join(', ')} WHERE id = ?`);
   stmt.run(...values);
   return getBook(id) || null;
@@ -272,7 +288,7 @@ export function saveProgress(bookId: string, currentPage: number): void {
       updated_at = CURRENT_TIMESTAMP
   `);
   stmt.run(bookId, currentPage);
-  
+
   // Also update book's updated_at
   const updateBookStmt = db.prepare(`
     UPDATE books SET updated_at = CURRENT_TIMESTAMP WHERE id = ?
@@ -424,6 +440,65 @@ export function deleteAiSetting(provider: string): void {
   stmt.run(provider);
 }
 
+// Notes (差し込みエディタ用)
+export interface NoteRecord {
+  id: string;
+  book_id: string;
+  page_num: number;
+  content: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getNotes(bookId: string): NoteRecord[] {
+  const stmt = db.prepare(`
+    SELECT * FROM notes WHERE book_id = ? ORDER BY page_num, position
+  `);
+  return stmt.all(bookId) as NoteRecord[];
+}
+
+export function getNote(id: string): NoteRecord | undefined {
+  const stmt = db.prepare('SELECT * FROM notes WHERE id = ?');
+  return stmt.get(id) as NoteRecord | undefined;
+}
+
+export function addNote(
+  bookId: string,
+  pageNum: number,
+  content: string = '',
+  position: number = 0
+): NoteRecord {
+  const id = uuidv4();
+  const stmt = db.prepare(`
+    INSERT INTO notes (id, book_id, page_num, content, position)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  stmt.run(id, bookId, pageNum, content, position);
+  return {
+    id,
+    book_id: bookId,
+    page_num: pageNum,
+    content,
+    position,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+export function updateNote(id: string, content: string): NoteRecord | undefined {
+  const stmt = db.prepare(`
+    UPDATE notes SET content = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `);
+  stmt.run(content, id);
+  return getNote(id);
+}
+
+export function deleteNote(id: string): void {
+  const stmt = db.prepare('DELETE FROM notes WHERE id = ?');
+  stmt.run(id);
+}
+
 // Default export for backward compatibility
 export default {
   addBook,
@@ -451,5 +526,10 @@ export default {
   getAiSettings,
   getAiSetting,
   saveAiSetting,
-  deleteAiSetting
+  deleteAiSetting,
+  getNotes,
+  getNote,
+  addNote,
+  updateNote,
+  deleteNote
 };

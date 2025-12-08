@@ -17,10 +17,13 @@
     "test:all": "npm test && cd client && npm test"
   },
   "dependencies": {
+    "@tiptap/extension-mathematics": "^3.13.0",
+    "@tiptap/markdown": "^3.13.0",
     "better-sqlite3": "^11.5.0",
     "cheerio": "^1.1.2",
     "cors": "^2.8.5",
     "express": "^4.21.1",
+    "katex": "^0.16.27",
     "multer": "^1.4.5-lts.1",
     "node-fetch": "^2.7.0",
     "uuid": "^10.0.0"
