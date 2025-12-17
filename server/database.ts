@@ -175,7 +175,7 @@ export function addBook(
   title: string,
   originalFilename: string,
   totalPages: number,
-  bookType: 'epub' | 'pdf' = 'epub'
+  bookType: 'epub' | 'pdf' | 'markdown' = 'epub'
 ): { id: string; title: string; originalFilename: string; totalPages: number; bookType: string } {
   const stmt = db.prepare(`
     INSERT INTO books (id, title, original_filename, total_pages, book_type)

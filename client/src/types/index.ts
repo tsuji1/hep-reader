@@ -7,7 +7,7 @@ export interface Book {
   pdf_total_pages?: number
   category?: string
   language: string
-  book_type?: 'epub' | 'pdf' | 'website'
+  book_type?: 'epub' | 'pdf' | 'website' | 'markdown'
   source_url?: string
   ai_context?: string
   current_page?: number

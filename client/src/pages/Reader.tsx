@@ -57,6 +57,10 @@ function Reader(): JSX.Element {
   const [editMode, setEditMode] = useState<boolean>(false)
   const [notes, setNotes] = useState<Note[]>([])
 
+  // スマホ向けツールバー表示
+  const [toolbarVisible, setToolbarVisible] = useState<boolean>(false)
+  const lastTapTimeRef = useRef<number>(0)
+
   const contentRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const isScrollingToPage = useRef<boolean>(false)
@@ -247,6 +251,25 @@ function Reader(): JSX.Element {
     container.addEventListener('click', handleImageClick)
     return () => container.removeEventListener('click', handleImageClick)
   }, [isPdf, loading])
+
+  // スマホ向けダブルタップでツールバー表示
+  const handleDoubleTap = useCallback((e: React.TouchEvent): void => {
+    // 画像やリンクなど、特定の要素ではダブルタップを無視
+    const target = e.target as HTMLElement
+    if (target.tagName === 'IMG' || target.tagName === 'A' || target.tagName === 'BUTTON') {
+      return
+    }
+
+    const now = Date.now()
+    const timeDiff = now - lastTapTimeRef.current
+
+    if (timeDiff < 300 && timeDiff > 0) {
+      // ダブルタップ検出
+      setToolbarVisible(prev => !prev)
+      e.preventDefault()
+    }
+    lastTapTimeRef.current = now
+  }, [])
 
   const fetchBookmarks = async (): Promise<void> => {
     try {
@@ -878,7 +901,12 @@ function Reader(): JSX.Element {
 
       {/* Main Content */}
       <main className="reader-main">
-        <div className="reader-toolbar-area">
+        <div
+          className={`reader-toolbar-area ${toolbarVisible ? 'toolbar-visible' : ''}`}
+          onTouchEnd={() => {
+            // ツールバー内のタッチでは閉じない（タッチイベントの伝播確認後に自動で閉じる処理を追加可能）
+          }}
+        >
           <div className="reader-toolbar-trigger" />
           <div className="reader-toolbar">
             <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
@@ -901,13 +929,23 @@ function Reader(): JSX.Element {
               </button>
 
               {isPdf && (
-                <button
-                  className={`clip-btn ${clipMode ? 'active' : ''}`}
-                  onClick={() => setClipMode(!clipMode)}
-                  title={clipMode ? 'クリップモード終了' : '範囲選択してクリップ'}
-                >
-                  📷 クリップ
-                </button>
+                <>
+                  <button
+                    className={`clip-btn ${clipMode ? 'active' : ''}`}
+                    onClick={() => setClipMode(!clipMode)}
+                    title={clipMode ? 'クリップモード終了' : '範囲選択してクリップ'}
+                  >
+                    📷 クリップ
+                  </button>
+                  <button
+                    className="secondary"
+                    onClick={() => addNote(currentPage)}
+                    title="現在のページにノートを追加"
+                    style={{ fontSize: '0.85rem', padding: '6px 10px' }}
+                  >
+                    ✏️ ノート追加
+                  </button>
+                </>
               )}
 
               {isPdf && (
@@ -1055,7 +1093,7 @@ function Reader(): JSX.Element {
           </div>
         </div>
 
-        <div className="reader-content" ref={contentRef}>
+        <div className="reader-content" ref={contentRef} onTouchEnd={handleDoubleTap}>
           {loading ? (
             <div className="loading">読み込み中</div>
           ) : isPdf ? (
@@ -1072,28 +1110,43 @@ function Reader(): JSX.Element {
                 clips={clips}
                 onClipClick={openClipInNewWindow}
                 scale={pdfScale}
+                scrollContainerRef={contentRef}
+                notes={notes.map(n => ({
+                  id: n.id,
+                  bookId: n.book_id,
+                  pageNum: n.page_num,
+                  content: n.content,
+                  position: n.position,
+                  createdAt: n.created_at,
+                  updatedAt: n.updated_at
+                }))}
+                onAddNote={addNote}
+                onSaveNote={saveNote}
+                onDeleteNote={deleteNote}
               />
 
-              {/* PDF用差し込みノート */}
-              <div className="pdf-notes-section">
-                {notes.filter(n => n.page_num === currentPage).map(note => (
-                  <InsertedNote
-                    key={note.id}
-                    note={{
-                      id: note.id,
-                      bookId: note.book_id,
-                      pageNum: note.page_num,
-                      content: note.content,
-                      position: note.position,
-                      createdAt: note.created_at,
-                      updatedAt: note.updated_at
-                    }}
-                    onSave={saveNote}
-                    onDelete={deleteNote}
-                  />
-                ))}
-                <InsertNoteButton onClick={() => addNote(currentPage)} />
-              </div>
+              {/* ページモード用のノート表示 */}
+              {viewMode === 'page' && (
+                <div className="pdf-notes-section">
+                  {notes.filter(n => n.page_num === currentPage).map(note => (
+                    <InsertedNote
+                      key={note.id}
+                      note={{
+                        id: note.id,
+                        bookId: note.book_id,
+                        pageNum: note.page_num,
+                        content: note.content,
+                        position: note.position,
+                        createdAt: note.created_at,
+                        updatedAt: note.updated_at
+                      }}
+                      onSave={saveNote}
+                      onDelete={deleteNote}
+                    />
+                  ))}
+                  <InsertNoteButton onClick={() => addNote(currentPage)} />
+                </div>
+              )}
             </div>
           ) : viewMode === 'scroll' ? (
             <div className="content-continuous">

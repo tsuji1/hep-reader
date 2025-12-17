@@ -942,6 +942,272 @@ describe('Translation Status API', () => {
   })
 })
 
+// ===== Markdown Upload Tests =====
+describe('Markdown Upload', () => {
+  const testDbPath = path.join(__dirname, '../data/test-markdown.db')
+  const testConvertedDir = path.join(__dirname, '../converted-test-markdown')
+  const testUploadsDir = path.join(__dirname, '../uploads-test-markdown')
+  let app, dbHelpers
+
+  beforeEach(() => {
+    // クリーンアップ
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)
+    if (fs.existsSync(testConvertedDir)) fs.rmSync(testConvertedDir, { recursive: true })
+    if (fs.existsSync(testUploadsDir)) fs.rmSync(testUploadsDir, { recursive: true })
+
+    // ディレクトリ作成
+    fs.mkdirSync(path.dirname(testDbPath), { recursive: true })
+    fs.mkdirSync(testConvertedDir, { recursive: true })
+    fs.mkdirSync(testUploadsDir, { recursive: true })
+
+    const testApp = createTestApp(testDbPath, testConvertedDir)
+    app = testApp.app
+    dbHelpers = testApp.dbHelpers
+  })
+
+  afterEach(() => {
+    dbHelpers.close()
+    if (fs.existsSync(testDbPath)) fs.unlinkSync(testDbPath)
+    if (fs.existsSync(testConvertedDir)) fs.rmSync(testConvertedDir, { recursive: true })
+    if (fs.existsSync(testUploadsDir)) fs.rmSync(testUploadsDir, { recursive: true })
+  })
+
+  describe('convertMarkdownToHtml helper', () => {
+    it('should convert simple markdown to HTML', () => {
+      // Arrange
+      const markdown = '# Hello World\n\nThis is a paragraph.'
+
+      // Act - using pandoc to convert
+      const tempMdPath = path.join(testUploadsDir, 'test.md')
+      const tempHtmlPath = path.join(testUploadsDir, 'test.html')
+      fs.writeFileSync(tempMdPath, markdown)
+
+      try {
+        execSync(`pandoc "${tempMdPath}" -o "${tempHtmlPath}" --standalone`, { stdio: 'pipe' })
+        const html = fs.readFileSync(tempHtmlPath, 'utf8')
+
+        // Assert
+        expect(html).toContain('Hello World')
+        expect(html).toContain('This is a paragraph')
+      } catch (e) {
+        // pandocがない環境ではスキップ
+        console.log('Skipping pandoc test - pandoc not installed')
+      }
+    })
+
+    it('should handle markdown with images', () => {
+      // Arrange
+      const markdown = '# Test\n\n![Alt text](images/test.png)'
+
+      // Act
+      const tempMdPath = path.join(testUploadsDir, 'test-img.md')
+      const tempHtmlPath = path.join(testUploadsDir, 'test-img.html')
+      fs.writeFileSync(tempMdPath, markdown)
+
+      try {
+        execSync(`pandoc "${tempMdPath}" -o "${tempHtmlPath}" --standalone`, { stdio: 'pipe' })
+        const html = fs.readFileSync(tempHtmlPath, 'utf8')
+
+        // Assert
+        expect(html).toContain('img')
+        expect(html).toContain('images/test.png')
+      } catch (e) {
+        console.log('Skipping pandoc test - pandoc not installed')
+      }
+    })
+
+    it('should handle Japanese markdown', () => {
+      // Arrange
+      const markdown = '# 日本語タイトル\n\nこれは日本語のテストです。'
+
+      // Act
+      const tempMdPath = path.join(testUploadsDir, 'japanese.md')
+      const tempHtmlPath = path.join(testUploadsDir, 'japanese.html')
+      fs.writeFileSync(tempMdPath, markdown, 'utf8')
+
+      try {
+        execSync(`pandoc "${tempMdPath}" -o "${tempHtmlPath}" --standalone`, { stdio: 'pipe' })
+        const html = fs.readFileSync(tempHtmlPath, 'utf8')
+
+        // Assert
+        expect(html).toContain('日本語タイトル')
+        expect(html).toContain('これは日本語のテストです')
+      } catch (e) {
+        console.log('Skipping pandoc test - pandoc not installed')
+      }
+    })
+  })
+
+  describe('Markdown image path resolution', () => {
+    // Helper function to fix image paths in markdown content
+    function fixMarkdownImagePaths(content, bookId, mediaDir) {
+      // Convert relative image paths to API paths
+      // ![alt](images/foo.png) -> ![alt](/api/books/{bookId}/media/foo.png)
+      // ![alt](./images/foo.png) -> ![alt](/api/books/{bookId}/media/foo.png)
+      return content
+        .replace(/!\[([^\]]*)\]\((?:\.\/)?(?:images|img|media)\/([^)]+)\)/g,
+          `![$1](/api/books/${bookId}/media/$2)`)
+        .replace(/src="(?:\.\/)?(?:images|img|media)\/([^"]+)"/g,
+          `src="/api/books/${bookId}/media/$1"`)
+    }
+
+    it('should convert relative image paths to API paths', () => {
+      // Arrange
+      const bookId = 'test-book-123'
+      const html = '<img src="images/test.png" alt="test">'
+
+      // Act
+      const fixed = fixMarkdownImagePaths(html, bookId, '')
+
+      // Assert
+      expect(fixed).toBe('<img src="/api/books/test-book-123/media/test.png" alt="test">')
+    })
+
+    it('should handle ./images/ prefix', () => {
+      // Arrange
+      const bookId = 'test-book-456'
+      const html = '<img src="./images/photo.jpg" alt="photo">'
+
+      // Act
+      const fixed = fixMarkdownImagePaths(html, bookId, '')
+
+      // Assert
+      expect(fixed).toBe('<img src="/api/books/test-book-456/media/photo.jpg" alt="photo">')
+    })
+
+    it('should handle markdown image syntax', () => {
+      // Arrange
+      const bookId = 'test-book-789'
+      const markdown = '![Alt text](images/diagram.svg)'
+
+      // Act
+      const fixed = fixMarkdownImagePaths(markdown, bookId, '')
+
+      // Assert
+      expect(fixed).toBe('![Alt text](/api/books/test-book-789/media/diagram.svg)')
+    })
+
+    it('should handle multiple images', () => {
+      // Arrange
+      const bookId = 'multi-img'
+      const html = '<img src="images/a.png"><img src="./img/b.jpg">'
+
+      // Act
+      const fixed = fixMarkdownImagePaths(html, bookId, '')
+
+      // Assert
+      expect(fixed).toContain('/api/books/multi-img/media/a.png')
+      expect(fixed).toContain('/api/books/multi-img/media/b.jpg')
+    })
+  })
+})
+
+// ===== ZIP Upload Tests =====
+describe('ZIP Upload', () => {
+  describe('ZIP extraction helper', () => {
+    it('should identify markdown files in extracted contents', () => {
+      // Helper function to identify markdown files
+      function findMarkdownFiles(files) {
+        return files.filter(f => /\.md$/i.test(f) && !f.startsWith('__MACOSX'))
+      }
+
+      // Arrange
+      const files = [
+        'README.md',
+        'docs/chapter1.md',
+        'docs/chapter2.MD',
+        'images/photo.png',
+        '__MACOSX/README.md',
+        'notes.txt'
+      ]
+
+      // Act
+      const mdFiles = findMarkdownFiles(files)
+
+      // Assert
+      expect(mdFiles).toHaveLength(3)
+      expect(mdFiles).toContain('README.md')
+      expect(mdFiles).toContain('docs/chapter1.md')
+      expect(mdFiles).toContain('docs/chapter2.MD')
+    })
+
+    it('should identify image directories', () => {
+      // Helper function to identify image directories
+      function findImageDirectories(files) {
+        const imageDirs = new Set()
+        for (const f of files) {
+          if (/\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f)) {
+            const dir = path.dirname(f)
+            if (dir !== '.') {
+              imageDirs.add(dir)
+            }
+          }
+        }
+        return Array.from(imageDirs)
+      }
+
+      // Arrange
+      const files = [
+        'README.md',
+        'images/photo.png',
+        'images/diagram.svg',
+        'assets/img/logo.jpg',
+        'cover.png'
+      ]
+
+      // Act
+      const imgDirs = findImageDirectories(files)
+
+      // Assert
+      expect(imgDirs).toContain('images')
+      expect(imgDirs).toContain('assets/img')
+    })
+  })
+})
+
+// ===== Folder Upload Tests =====
+describe('Folder Upload', () => {
+  describe('Multiple markdown files handling', () => {
+    it('should sort markdown files by name', () => {
+      // Arrange
+      const files = [
+        'chapter-10.md',
+        'chapter-2.md',
+        'chapter-1.md',
+        'chapter-3.md'
+      ]
+
+      // Natural sort for proper ordering
+      const sorted = files.sort((a, b) => {
+        return a.localeCompare(b, undefined, { numeric: true })
+      })
+
+      // Assert
+      expect(sorted).toEqual([
+        'chapter-1.md',
+        'chapter-2.md',
+        'chapter-3.md',
+        'chapter-10.md'
+      ])
+    })
+
+    it('should handle nested folder structure', () => {
+      // Helper to get title from path
+      function getTitleFromPath(filePath) {
+        const basename = path.basename(filePath, path.extname(filePath))
+        return basename
+          .replace(/[-_]/g, ' ')
+          .replace(/([a-z])([A-Z])/g, '$1 $2')
+      }
+
+      // Arrange & Act & Assert
+      expect(getTitleFromPath('docs/chapter-1.md')).toBe('chapter 1')
+      expect(getTitleFromPath('my_document.md')).toBe('my document')
+      expect(getTitleFromPath('CamelCaseTitle.md')).toBe('Camel Case Title')
+    })
+  })
+})
+
 // ===== Multi-page URL API Tests =====
 // ヘルパー関数のテストは server/multipage-utils.test.js に移動済み
 

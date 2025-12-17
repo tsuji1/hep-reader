@@ -245,6 +245,13 @@ export default function TiptapEditor({
     }
   }, [editor])
 
+  // tiptap-contentをクリックしたらエディタにフォーカス
+  const handleContentClick = useCallback(() => {
+    if (editor && editable) {
+      editor.commands.focus('end')
+    }
+  }, [editor, editable])
+
   return (
     <div className={`tiptap-editor ${className}`}>
       {editable && (
@@ -260,11 +267,14 @@ export default function TiptapEditor({
           </div>
         </div>
       )}
-      <EditorContent editor={editor} className="tiptap-content" />
+      <div className="tiptap-content-wrapper" onClick={handleContentClick}>
+        <EditorContent editor={editor} className="tiptap-content" />
+      </div>
     </div>
   )
 }
 
 // エディタインスタンスを外部から使用するためのhook
 export { useEditor, type Editor }
+
 

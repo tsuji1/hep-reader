@@ -70,6 +70,10 @@
   gap: 4px;
 }
 
+.tiptap-content-wrapper {
+  cursor: text;
+}
+
 .tiptap-content {
   padding: 16px;
   min-height: 200px;

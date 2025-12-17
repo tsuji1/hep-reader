@@ -84,8 +84,8 @@ function Home(): JSX.Element {
 
   const handleUpload = async (file: File | undefined): Promise<void> => {
     const ext = file?.name.split('.').pop()?.toLowerCase()
-    if (!file || !['epub', 'pdf'].includes(ext || '')) {
-      alert('EPUBまたはPDFファイルを選択してください')
+    if (!file || !['epub', 'pdf', 'md', 'zip'].includes(ext || '')) {
+      alert('EPUB、PDF、Markdown、またはZIPファイルを選択してください')
       return
     }
 
@@ -96,7 +96,10 @@ function Home(): JSX.Element {
     formData.append('file', file)
 
     try {
-      setUploadProgress(ext === 'pdf' ? '保存中...' : '変換中...')
+      const progressMsg = ext === 'pdf' ? '保存中...'
+        : ext === 'md' || ext === 'zip' ? 'Markdown変換中...'
+          : '変換中...'
+      setUploadProgress(progressMsg)
       const res = await axios.post<{ bookId: string; bookType: string }>('/api/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       })
@@ -116,6 +119,77 @@ function Home(): JSX.Element {
       console.error('Upload failed:', error)
       const axiosError = error as { response?: { data?: { error?: string } } }
       alert(axiosError.response?.data?.error || 'アップロードに失敗しました')
+    } finally {
+      setUploading(false)
+      setUploadProgress('')
+    }
+  }
+
+  // Handle folder upload (multiple markdown files)
+  const handleFolderUpload = async (files: FileList | null): Promise<void> => {
+    if (!files || files.length === 0) return
+
+    // Filter markdown files and images
+    const mdFiles: File[] = []
+    const imageFiles: File[] = []
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i]
+      const ext = file.name.split('.').pop()?.toLowerCase()
+      if (ext === 'md') {
+        mdFiles.push(file)
+      } else if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'].includes(ext || '')) {
+        imageFiles.push(file)
+      }
+    }
+
+    if (mdFiles.length === 0) {
+      alert('Markdownファイルが見つかりません')
+      return
+    }
+
+    setUploading(true)
+    setUploadProgress(`${mdFiles.length}個のMarkdownファイルを処理中...`)
+
+    try {
+      // Create a ZIP from the files and upload
+      const JSZip = (await import('jszip')).default
+      const zip = new JSZip()
+
+      // Add markdown files
+      for (const file of mdFiles) {
+        const content = await file.text()
+        zip.file(file.name, content)
+      }
+
+      // Add image files
+      for (const file of imageFiles) {
+        const arrayBuffer = await file.arrayBuffer()
+        zip.file(file.name, arrayBuffer)
+      }
+
+      // Generate ZIP
+      const zipBlob = await zip.generateAsync({ type: 'blob' })
+      const zipFile = new File([zipBlob], 'folder-upload.zip', { type: 'application/zip' })
+
+      const formData = new FormData()
+      formData.append('file', zipFile)
+
+      setUploadProgress('変換中...')
+      const res = await axios.post<{ bookId: string; bookType: string }>('/api/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      })
+
+      setUploadProgress('完了!')
+      fetchBooks()
+
+      setTimeout(() => {
+        navigate(`/read/${res.data.bookId}`)
+      }, 500)
+    } catch (error: unknown) {
+      console.error('Folder upload failed:', error)
+      const axiosError = error as { response?: { data?: { error?: string } } }
+      alert(axiosError.response?.data?.error || 'フォルダのアップロードに失敗しました')
     } finally {
       setUploading(false)
       setUploadProgress('')
@@ -486,9 +560,19 @@ function Home(): JSX.Element {
             <input
               id="file-input"
               type="file"
-              accept=".epub,.pdf"
+              accept=".epub,.pdf,.md,.zip"
               onChange={handleFileSelect}
               disabled={uploading}
+            />
+            <input
+              id="folder-input"
+              type="file"
+              // @ts-expect-error - webkitdirectory is not in standard HTML attributes
+              webkitdirectory=""
+              multiple
+              onChange={(e) => handleFolderUpload(e.target.files)}
+              disabled={uploading}
+              style={{ display: 'none' }}
             />
             {uploading ? (
               <>
@@ -498,8 +582,29 @@ function Home(): JSX.Element {
             ) : (
               <>
                 <div className="upload-icon">📖</div>
-                <p>EPUB / PDFファイルをドロップ、またはクリックして選択</p>
-                <p className="hint">EPUBはHTMLに変換、PDFはそのまま表示</p>
+                <p>EPUB / PDF / Markdown / ZIPファイルをドロップ、またはクリックして選択</p>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '10px' }}>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      document.getElementById('folder-input')?.click()
+                    }}
+                    style={{
+                      padding: '8px 16px',
+                      background: '#10b981',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '6px',
+                      cursor: 'pointer',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    📁 フォルダを選択
+                  </button>
+                </div>
+                <p className="hint" style={{ marginTop: '10px' }}>
+                  EPUB/PDFはそのまま表示 | Markdown/ZIPはHTMLに変換 | フォルダ選択でMD+画像を一括登録
+                </p>
               </>
             )}
           </div>
@@ -579,7 +684,8 @@ function Home(): JSX.Element {
               { value: 'all', label: 'すべて', color: '#667eea' },
               { value: 'epub', label: '📖 EPUB', color: '#667eea' },
               { value: 'pdf', label: '📄 PDF', color: '#ef4444' },
-              { value: 'website', label: '🌐 WEB', color: '#10b981' }
+              { value: 'website', label: '🌐 WEB', color: '#10b981' },
+              { value: 'markdown', label: '📝 MD', color: '#8b5cf6' }
             ].map(type => (
               <button
                 key={type.value}
@@ -746,7 +852,10 @@ function Home(): JSX.Element {
                           }}
                         />
                         <div className="no-cover-icon">
-                          {book.book_type === 'pdf' ? '📄' : book.book_type === 'website' ? '🌐' : '📖'}
+                          {book.book_type === 'pdf' ? '📄'
+                            : book.book_type === 'website' ? '🌐'
+                              : book.book_type === 'markdown' ? '📝'
+                                : '📖'}
                         </div>
                         {/* 左上にタイプバッジ */}
                         <div
@@ -754,10 +863,14 @@ function Home(): JSX.Element {
                           style={{
                             background: book.book_type === 'pdf' ? '#ef4444'
                               : book.book_type === 'website' ? '#10b981'
-                                : '#667eea'
+                                : book.book_type === 'markdown' ? '#8b5cf6'
+                                  : '#667eea'
                           }}
                         >
-                          {book.book_type === 'pdf' ? 'PDF' : book.book_type === 'website' ? 'WEB' : 'EPUB'}
+                          {book.book_type === 'pdf' ? 'PDF'
+                            : book.book_type === 'website' ? 'WEB'
+                              : book.book_type === 'markdown' ? 'MD'
+                                : 'EPUB'}
                         </div>
                       </div>
                       <div className="book-info">
@@ -767,7 +880,9 @@ function Home(): JSX.Element {
                             ? `PDF${book.pdf_total_pages ? ` • ${book.pdf_total_pages}ページ` : ''}`
                             : book.book_type === 'website'
                               ? 'Webページ'
-                              : `${book.total_pages}ページ`}
+                              : book.book_type === 'markdown'
+                                ? `Markdown • ${book.total_pages}ページ`
+                                : `${book.total_pages}ページ`}
                           {book.current_page && book.current_page > 1 && (
                             <> • {Math.round(getProgress(book))}% 読了</>
                           )}

@@ -181,10 +181,10 @@ const upload = multer({
   storage,
   fileFilter: (_req: Request, file: Express.Multer.File, cb: FileFilterCallback) => {
     const ext = path.extname(file.originalname).toLowerCase();
-    if (ext === '.epub' || ext === '.pdf') {
+    if (['.epub', '.pdf', '.md', '.zip'].includes(ext)) {
       cb(null, true);
     } else {
-      cb(new Error('Only EPUB and PDF files are allowed'));
+      cb(new Error('Only EPUB, PDF, Markdown, and ZIP files are allowed'));
     }
   }
 });
@@ -286,6 +286,174 @@ function splitIntoPages(htmlContent: string, bookDir: string): string[] {
   return pages;
 }
 
+// Helper: Fix image paths in HTML content for markdown
+function fixMarkdownImagePaths(content: string, bookId: string): string {
+  return content
+    // HTML img tags: src="images/foo.png" or src="./images/foo.png"
+    .replace(/src="(?:\.\/)?(?:images|img|media|assets)\/([^"]+)"/g,
+      `src="/api/books/${bookId}/media/$1"`)
+    // Also handle relative paths without folder prefix
+    .replace(/src="\.\/([^"]+\.(png|jpg|jpeg|gif|webp|svg))"/gi,
+      `src="/api/books/${bookId}/media/$1"`);
+}
+
+// Helper: Process ZIP file and extract markdown with images
+async function processZipFile(zipPath: string, bookDir: string, bookId: string): Promise<{ pages: string[]; title: string }> {
+  const AdmZip = (await import('adm-zip')).default;
+  const zip = new AdmZip(zipPath);
+  const zipEntries = zip.getEntries();
+
+  const mediaDir = path.join(bookDir, 'media');
+  const pagesDir = path.join(bookDir, 'pages');
+  fs.mkdirSync(mediaDir, { recursive: true });
+  fs.mkdirSync(pagesDir, { recursive: true });
+
+  // Find markdown files and image files
+  const mdFiles: { name: string; content: string }[] = [];
+  const imageFiles: { name: string; data: Buffer }[] = [];
+
+  for (const entry of zipEntries) {
+    const entryName = entry.entryName;
+    // Skip Mac metadata
+    if (entryName.startsWith('__MACOSX/') || entryName.startsWith('._')) continue;
+
+    if (/\.md$/i.test(entryName) && !entry.isDirectory) {
+      mdFiles.push({
+        name: path.basename(entryName),
+        content: entry.getData().toString('utf8')
+      });
+    } else if (/\.(png|jpg|jpeg|gif|webp|svg)$/i.test(entryName) && !entry.isDirectory) {
+      imageFiles.push({
+        name: path.basename(entryName),
+        data: entry.getData()
+      });
+    }
+  }
+
+  // Sort markdown files naturally
+  mdFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  // Save images to media directory
+  for (const img of imageFiles) {
+    fs.writeFileSync(path.join(mediaDir, img.name), img.data);
+  }
+
+  // Get title from first markdown file or ZIP name
+  const title = mdFiles.length > 0
+    ? path.basename(mdFiles[0].name, '.md').replace(/[-_]/g, ' ')
+    : 'Untitled';
+
+  // Convert each markdown to HTML page
+  const pages: string[] = [];
+  const customStyles = `
+    <style>
+      body { 
+        font-family: 'Noto Sans JP', 'Hiragino Sans', sans-serif;
+        line-height: 1.8;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background: #fafafa;
+        color: #333;
+      }
+      img { max-width: 100%; height: auto; }
+      pre { 
+        background: #f4f4f4; 
+        padding: 15px; 
+        overflow-x: auto;
+        border-radius: 5px;
+      }
+      code { 
+        background: #f4f4f4; 
+        padding: 2px 6px;
+        border-radius: 3px;
+      }
+      h1, h2, h3 { color: #2c3e50; }
+      a { color: #3498db; }
+    </style>
+  `;
+
+  for (let i = 0; i < mdFiles.length; i++) {
+    const md = mdFiles[i];
+    const pageNum = i + 1;
+    const tempMdPath = path.join(bookDir, `temp-${pageNum}.md`);
+    const tempHtmlPath = path.join(bookDir, `temp-${pageNum}.html`);
+
+    fs.writeFileSync(tempMdPath, md.content);
+
+    try {
+      execSync(`pandoc "${tempMdPath}" -o "${tempHtmlPath}" --standalone`, { stdio: 'pipe' });
+      let htmlContent = fs.readFileSync(tempHtmlPath, 'utf8');
+
+      // Fix image paths
+      htmlContent = fixMarkdownImagePaths(htmlContent, bookId);
+
+      // Extract body and wrap with styles
+      const bodyMatch = htmlContent.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
+      const bodyContent = bodyMatch ? bodyMatch[1] : htmlContent;
+
+      const pageHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${md.name}</title>
+  ${customStyles}
+</head>
+<body>
+  ${bodyContent}
+</body>
+</html>`;
+
+      const pageFile = `page-${pageNum}.html`;
+      fs.writeFileSync(path.join(pagesDir, pageFile), pageHtml);
+      pages.push(pageFile);
+
+      // Cleanup temp files
+      fs.unlinkSync(tempMdPath);
+      fs.unlinkSync(tempHtmlPath);
+    } catch (e) {
+      console.error(`Failed to convert ${md.name}:`, e);
+      fs.unlinkSync(tempMdPath);
+    }
+  }
+
+  return { pages, title };
+}
+
+// Helper: Process single Markdown file
+async function processMarkdownFile(mdPath: string, bookDir: string, bookId: string, originalFilename: string): Promise<{ pages: string[]; title: string }> {
+  const mediaDir = path.join(bookDir, 'media');
+  const pagesDir = path.join(bookDir, 'pages');
+  fs.mkdirSync(mediaDir, { recursive: true });
+  fs.mkdirSync(pagesDir, { recursive: true });
+
+  const title = path.basename(originalFilename, '.md')
+    .replace(/[-_]/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2');
+
+  const tempHtmlPath = path.join(bookDir, 'temp.html');
+
+  try {
+    execSync(`pandoc "${mdPath}" -o "${tempHtmlPath}" --standalone --toc`, { stdio: 'pipe' });
+    let htmlContent = fs.readFileSync(tempHtmlPath, 'utf8');
+
+    // Fix image paths
+    htmlContent = fixMarkdownImagePaths(htmlContent, bookId);
+
+    // Split into pages (reuse existing logic)
+    const pages = splitIntoPages(htmlContent, bookDir);
+
+    // Cleanup
+    fs.unlinkSync(tempHtmlPath);
+
+    return { pages, title };
+  } catch (e) {
+    console.error('Failed to convert markdown:', e);
+    throw new Error('Failed to convert Markdown. Make sure pandoc is installed.');
+  }
+}
+
 // Upload and convert EPUB to HTML, or store PDF
 app.post('/api/upload', upload.single('file'), async (req: Request, res: Response) => {
   try {
@@ -304,6 +472,82 @@ app.post('/api/upload', upload.single('file'), async (req: Request, res: Respons
     const bookTitle = path.basename(originalFilename, ext)
       .replace(/[-_]/g, ' ')
       .replace(/([a-z])([A-Z])/g, '$1 $2');
+
+    // Handle Markdown upload
+    if (ext === '.md') {
+      fs.mkdirSync(bookDir, { recursive: true });
+
+      try {
+        const { pages, title } = await processMarkdownFile(filePath, bookDir, bookId, originalFilename);
+
+        // Save to database
+        db.addBook(bookId, title, originalFilename, pages.length, 'markdown');
+
+        // Auto-suggest tags
+        const mdContent = fs.readFileSync(filePath, 'utf8');
+        suggestTags(title, mdContent).then(tagIds => {
+          tagIds.forEach(tagId => db.addTagToBook(bookId, tagId));
+        }).catch(e => console.error('Auto-tag error:', e));
+
+        // Cleanup
+        fs.unlinkSync(filePath);
+
+        return res.json({
+          success: true,
+          bookId,
+          title,
+          bookType: 'markdown',
+          totalPages: pages.length
+        });
+      } catch (error) {
+        fs.unlinkSync(filePath);
+        return res.status(500).json({ error: (error as Error).message });
+      }
+    }
+
+    // Handle ZIP upload (Markdown + images)
+    if (ext === '.zip') {
+      fs.mkdirSync(bookDir, { recursive: true });
+
+      try {
+        const { pages, title } = await processZipFile(filePath, bookDir, bookId);
+
+        if (pages.length === 0) {
+          fs.rmSync(bookDir, { recursive: true });
+          fs.unlinkSync(filePath);
+          return res.status(400).json({ error: 'No Markdown files found in ZIP' });
+        }
+
+        // Save pages.json
+        fs.writeFileSync(
+          path.join(bookDir, 'pages.json'),
+          JSON.stringify({ total: pages.length, pages })
+        );
+
+        // Save to database
+        db.addBook(bookId, title, originalFilename, pages.length, 'markdown');
+
+        // Auto-suggest tags
+        suggestTags(title, originalFilename).then(tagIds => {
+          tagIds.forEach(tagId => db.addTagToBook(bookId, tagId));
+        }).catch(e => console.error('Auto-tag error:', e));
+
+        // Cleanup
+        fs.unlinkSync(filePath);
+
+        return res.json({
+          success: true,
+          bookId,
+          title,
+          bookType: 'markdown',
+          totalPages: pages.length
+        });
+      } catch (error) {
+        if (fs.existsSync(bookDir)) fs.rmSync(bookDir, { recursive: true });
+        fs.unlinkSync(filePath);
+        return res.status(500).json({ error: (error as Error).message });
+      }
+    }
 
     if (ext === '.pdf') {
       // Handle PDF upload

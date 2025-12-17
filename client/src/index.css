@@ -22,7 +22,7 @@ body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   padding: 20px 0;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .header h1 {
@@ -41,7 +41,7 @@ body {
   border-radius: 12px;
   padding: 40px;
   margin: 30px 0;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
   text-align: center;
 }
 
@@ -150,7 +150,7 @@ body {
 .book-card {
   background: white;
   border-radius: 12px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.05);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   cursor: pointer;
   position: relative;
@@ -161,7 +161,7 @@ body {
 
 .book-card:hover {
   transform: translateY(-5px);
-  box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
 }
 
 .book-cover {
@@ -526,7 +526,8 @@ body {
   z-index: 100;
 }
 
-.reader-toolbar-area:hover .reader-toolbar {
+.reader-toolbar-area:hover .reader-toolbar,
+.reader-toolbar-area.toolbar-visible .reader-toolbar {
   opacity: 1;
   transform: translateY(0);
 }
@@ -656,7 +657,7 @@ body {
   border: none;
   background: white;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
 .content-html {
@@ -666,7 +667,7 @@ body {
   background: white;
   padding: 40px 60px;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   line-height: 1.8;
   font-size: 1.05rem;
 }
@@ -725,7 +726,7 @@ body {
   border-radius: 0 0 8px 8px;
   width: fit-content;
   margin: 0 auto 20px auto;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   transition: all 0.2s ease;
 }
 
@@ -760,7 +761,9 @@ body {
 }
 
 @keyframes spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .error {
@@ -789,7 +792,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0,0,0,0.5);
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -847,25 +850,25 @@ body {
   .reader {
     flex-direction: column;
   }
-  
+
   .reader-sidebar {
     width: 100%;
     height: auto;
     max-height: 300px;
   }
-  
+
   .reader-sidebar.collapsed {
     height: 0;
   }
-  
+
   .book-list {
     grid-template-columns: 1fr;
   }
-  
+
   .reader-content {
     padding: 20px;
   }
-  
+
   .content-html {
     padding: 20px;
   }
@@ -898,7 +901,7 @@ body {
   padding: 15px 20px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .pdf-header .back-link {
@@ -906,13 +909,13 @@ body {
   text-decoration: none;
   font-size: 0.9rem;
   padding: 8px 16px;
-  background: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.2);
   border-radius: 6px;
   transition: background 0.2s ease;
 }
 
 .pdf-header .back-link:hover {
-  background: rgba(255,255,255,0.3);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .pdf-header h1 {
@@ -945,7 +948,8 @@ body {
 }
 
 .pdf-controls {
-  display: none; /* ズームコントロールはツールバーに移動 */
+  display: none;
+  /* ズームコントロールはツールバーに移動 */
 }
 
 /* PDF Zoom Controls in Toolbar */
@@ -1015,7 +1019,7 @@ body {
   height: auto;
   margin: 0 auto;
   background: white;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   border-radius: 4px;
 }
 
@@ -1030,7 +1034,7 @@ body {
   color: #888;
   font-size: 0.9rem;
   border-radius: 8px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
 .pdf-page-number {
@@ -1044,7 +1048,7 @@ body {
   border-radius: 0 0 8px 8px;
   width: fit-content;
   margin: 0 auto 20px auto;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   text-align: center;
 }
 
@@ -1062,7 +1066,7 @@ body {
   max-height: calc(100vh - 200px);
   object-fit: contain;
   background: white;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   border-radius: 8px;
 }
 
@@ -1071,7 +1075,7 @@ body {
   position: relative;
   margin: 0 auto;
   background: white;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
   border-radius: 4px;
 }
 
@@ -1088,7 +1092,7 @@ body {
   line-height: 1;
 }
 
-.pdf-text-layer > span {
+.pdf-text-layer>span {
   position: absolute;
   white-space: pre;
   transform-origin: 0% 0%;
@@ -1145,7 +1149,7 @@ body {
   background: #222;
   padding: 20px;
   border-radius: 8px;
-  box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 
 .image-popup-content img {
@@ -1321,20 +1325,23 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   transition: all 0.2s ease;
   animation: clip-marker-pulse 2s infinite;
 }
 
 .clip-marker-btn:hover {
   transform: scale(1.2);
-  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
 }
 
 @keyframes clip-marker-pulse {
-  0%, 100% {
+
+  0%,
+  100% {
     box-shadow: 0 2px 8px rgba(102, 126, 234, 0.4);
   }
+
   50% {
     box-shadow: 0 2px 16px rgba(102, 126, 234, 0.8);
   }
@@ -1350,11 +1357,11 @@ body {
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
   padding: 20px 30px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
 }
 
 .settings-header .back-link {
-  color: rgba(255,255,255,0.9);
+  color: rgba(255, 255, 255, 0.9);
   text-decoration: none;
   font-size: 0.9rem;
   display: inline-block;
@@ -1611,7 +1618,7 @@ body {
   max-height: 500px;
   background: white;
   border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0,0,0,0.15);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
   z-index: 1000;
   display: flex;
   flex-direction: column;
@@ -1636,7 +1643,7 @@ body {
 }
 
 .ai-chat-header .close-btn {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.2);
   border: none;
   color: white;
   width: 28px;
@@ -1647,7 +1654,7 @@ body {
 }
 
 .ai-chat-header .close-btn:hover {
-  background: rgba(255,255,255,0.3);
+  background: rgba(255, 255, 255, 0.3);
 }
 
 .ai-provider-select {
@@ -1790,7 +1797,7 @@ body {
 }
 
 .settings-link {
-  color: rgba(255,255,255,0.9);
+  color: rgba(255, 255, 255, 0.9);
   text-decoration: none;
   font-size: 1.2rem;
   padding: 8px;
@@ -1799,7 +1806,22 @@ body {
 }
 
 .settings-link:hover {
-  background: rgba(255,255,255,0.2);
+  background: rgba(255, 255, 255, 0.2);
 }
 
+/* PDF Page Notes - PDFキャンバスと同じ幅 */
+.pdf-page-notes {
+  margin: 15px 0;
+  padding: 0;
+  /* PDFキャンバスと同じ幅に合わせる（親要素の幅を継承） */
+}
 
+.pdf-page-notes .inserted-editor {
+  max-width: none;
+  margin: 12px 0;
+}
+
+.pdf-page-notes .insert-editor-button {
+  max-width: none;
+  margin: 8px 0;
+}

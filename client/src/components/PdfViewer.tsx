@@ -1,6 +1,7 @@
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import { useCallback, useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
+import { InsertedNote, InsertNoteButton, type NoteData } from '../editor'
 import type { Clip, ClipPosition } from '../types'
 
 // PDF.js worker設定
@@ -19,6 +20,7 @@ interface PdfPageProps {
   onClipCapture?: (pageNum: number, imageData: string, position: ClipPosition) => void
   clips?: Clip[]
   onClipClick?: (clip: Clip) => void
+  onPageSizeChange?: (pageNum: number, width: number) => void
 }
 
 interface SelectionRect {
@@ -29,7 +31,7 @@ interface SelectionRect {
 }
 
 // 個別ページコンポーネント
-function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clips, onClipClick }: PdfPageProps): JSX.Element {
+function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clips, onClipClick, onPageSizeChange }: PdfPageProps): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const textLayerRef = useRef<HTMLDivElement>(null)
   const [rendered, setRendered] = useState<boolean>(false)
@@ -152,6 +154,15 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
     return null
   }
 
+  // ページ番号が変わった場合は再レンダリングを許可
+  const currentPageRef = useRef<number>(pageNum)
+  useEffect(() => {
+    if (currentPageRef.current !== pageNum) {
+      currentPageRef.current = pageNum
+      setRendered(false)
+    }
+  }, [pageNum])
+
   useEffect(() => {
     // スケールが変わった場合は再レンダリングを許可
     if (currentScaleRef.current !== scale) {
@@ -169,6 +180,7 @@ function PdfPage({ pdf, pageNum, scale, isVisible, clipMode, onClipCapture, clip
         const viewport = page.getViewport({ scale })
 
         setPageSize({ width: viewport.width, height: viewport.height })
+        onPageSizeChange?.(pageNum, viewport.width)
 
         const canvas = canvasRef.current
         if (!canvas) return
@@ -354,17 +366,29 @@ interface PdfViewerProps {
   clips?: Clip[]
   onClipClick?: (clip: Clip) => void
   scale: number
+  scrollContainerRef?: React.RefObject<HTMLDivElement | null>
+  // ノート機能
+  notes?: NoteData[]
+  onAddNote?: (pageNum: number) => void
+  onSaveNote?: (note: NoteData) => Promise<void>
+  onDeleteNote?: (noteId: string) => Promise<void>
 }
 
-function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPageTextExtracted, viewMode, clipMode, onClipCapture, clips, onClipClick, scale }: PdfViewerProps): JSX.Element {
+function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPageTextExtracted, viewMode, clipMode, onClipCapture, clips, onClipClick, scale, scrollContainerRef, notes, onAddNote, onSaveNote, onDeleteNote }: PdfViewerProps): JSX.Element {
   const [pdf, setPdf] = useState<pdfjsLib.PDFDocumentProxy | null>(null)
   const [totalPages, setTotalPages] = useState<number>(0)
   const [loading, setLoading] = useState<boolean>(true)
   const [visiblePages, setVisiblePages] = useState<Record<number, boolean>>({})
+  const [pageWidths, setPageWidths] = useState<Record<number, number>>({})
   const containerRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
   const isScrollingToPage = useRef<boolean>(false)
   const pageTextsRef = useRef<Map<number, string>>(new Map())
+
+  // ページサイズが変更されたときのハンドラ
+  const handlePageSizeChange = useCallback((pageNum: number, width: number) => {
+    setPageWidths(prev => ({ ...prev, [pageNum]: width }))
+  }, [])
 
   // PDFを読み込み
   useEffect(() => {
@@ -505,17 +529,19 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
   // スクロール時のページ検出（スクロールによる変更時はスクロール処理をスキップ）
   const isScrollDetectedChange = useRef<boolean>(false)
   useEffect(() => {
+    // 親から渡されたスクロールコンテナ、またはこのコンポーネントのコンテナを使用
+    const scrollContainer = scrollContainerRef?.current || containerRef.current
     if (viewMode !== 'scroll') return
 
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
 
     const handleScroll = (): void => {
-      if (isScrollingToPage.current || !containerRef.current) return
+      if (isScrollingToPage.current) return
 
       // デバウンス：200ms待ってからページ変更を通知
       if (debounceTimer) clearTimeout(debounceTimer)
       debounceTimer = setTimeout(() => {
-        const container = containerRef.current
+        const container = scrollContainerRef?.current || containerRef.current
         if (!container) return
 
         const containerRect = container.getBoundingClientRect()
@@ -544,15 +570,14 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
       }, 200)
     }
 
-    const container = containerRef.current
-    if (container) {
-      container.addEventListener('scroll', handleScroll, { passive: true })
+    if (scrollContainer) {
+      scrollContainer.addEventListener('scroll', handleScroll, { passive: true })
       return () => {
-        container.removeEventListener('scroll', handleScroll)
+        scrollContainer.removeEventListener('scroll', handleScroll)
         if (debounceTimer) clearTimeout(debounceTimer)
       }
     }
-  }, [currentPage, totalPages, viewMode, onPageChange])
+  }, [currentPage, totalPages, viewMode, onPageChange, scrollContainerRef])
 
   // ページへスクロール
   const scrollToPage = useCallback((page: number): void => {
@@ -624,35 +649,57 @@ function PdfViewer({ pdfUrl, currentPage, onPageChange, onTotalPagesChange, onPa
     <div className="pdf-viewer-container" ref={containerRef}>
       {viewMode === 'scroll' ? (
         <div className="pdf-pages-scroll">
-          {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => (
-            <div
-              key={pageNum}
-              ref={el => { pageRefs.current[pageNum] = el }}
-              className={`pdf-page ${pageNum === currentPage ? 'current' : ''}`}
-              data-page={pageNum}
-            >
-              <div className="pdf-page-number">
-                <span>ページ {pageNum} / {totalPages}</span>
+          {Array.from({ length: totalPages }, (_, i) => i + 1).map(pageNum => {
+            const pageNotes = notes?.filter(n => n.pageNum === pageNum) || []
+            return (
+              <div
+                key={pageNum}
+                ref={el => { pageRefs.current[pageNum] = el }}
+                className={`pdf-page ${pageNum === currentPage ? 'current' : ''}`}
+                data-page={pageNum}
+              >
+                <div className="pdf-page-number">
+                  <span>ページ {pageNum} / {totalPages}</span>
+                </div>
+                <div className="pdf-page-content">
+                  <PdfPage
+                    pdf={pdf}
+                    pageNum={pageNum}
+                    scale={scale}
+                    isVisible={!!visiblePages[pageNum]}
+                    clipMode={clipMode}
+                    onClipCapture={onClipCapture}
+                    clips={clips}
+                    onClipClick={onClipClick}
+                    onPageSizeChange={handlePageSizeChange}
+                  />
+                </div>
+                {/* ページごとのノートセクション（EPUBと同じコンポーネント） */}
+                <div
+                  className="pdf-page-notes"
+                  style={{ width: pageWidths[pageNum] ? `${pageWidths[pageNum]}px` : 'auto' }}
+                >
+                  {pageNotes.map(note => (
+                    <InsertedNote
+                      key={note.id}
+                      note={note}
+                      onSave={onSaveNote || (async () => { })}
+                      onDelete={onDeleteNote || (async () => { })}
+                    />
+                  ))}
+                  {onAddNote && (
+                    <InsertNoteButton onClick={() => onAddNote(pageNum)} />
+                  )}
+                </div>
               </div>
-              <div className="pdf-page-content">
-                <PdfPage
-                  pdf={pdf}
-                  pageNum={pageNum}
-                  scale={scale}
-                  isVisible={!!visiblePages[pageNum]}
-                  clipMode={clipMode}
-                  onClipCapture={onClipCapture}
-                  clips={clips}
-                  onClipClick={onClipClick}
-                />
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       ) : (
         <div className="pdf-page-single">
           <div className="pdf-page-content">
             <PdfPage
+              key={currentPage}
               pdf={pdf}
               pageNum={currentPage}
               scale={scale}
