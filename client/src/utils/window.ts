@@ -30,8 +30,6 @@ export function openImageInNewWindow(image: ImageInfo): void {
         body {
           display: flex;
           flex-direction: column;
-          align-items: center;
-          justify-content: flex-start;
           padding: 10px;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
@@ -42,42 +40,54 @@ export function openImageInNewWindow(image: ImageInfo): void {
           display: flex;
           gap: 5px;
           z-index: 100;
-          background: rgba(0,0,0,0.5);
-          padding: 5px;
-          border-radius: 5px;
+          background: rgba(0,0,0,0.7);
+          padding: 8px;
+          border-radius: 8px;
         }
         .controls button {
           background: rgba(255,255,255,0.9);
           border: none;
           color: #333;
-          width: 32px;
-          height: 32px;
-          border-radius: 4px;
+          width: 36px;
+          height: 36px;
+          border-radius: 6px;
           cursor: pointer;
-          font-size: 18px;
+          font-size: 20px;
           font-weight: bold;
+          transition: transform 0.1s;
         }
         .controls button:hover {
           background: #fff;
+          transform: scale(1.1);
         }
         .controls span {
           color: white;
-          line-height: 32px;
-          padding: 0 8px;
+          line-height: 36px;
+          padding: 0 10px;
           font-size: 14px;
+          min-width: 60px;
+          text-align: center;
         }
         .image-container {
+          flex: 1;
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: calc(100vh - 60px);
-          width: 100%;
+          padding: 50px 20px 20px;
+          min-width: fit-content;
+        }
+        .image-container.zoomed {
+          align-items: flex-start;
+          justify-content: flex-start;
         }
         img {
           display: block;
           border-radius: 4px;
           box-shadow: 0 4px 20px rgba(0,0,0,0.4);
-          transform-origin: center center;
+          cursor: grab;
+        }
+        img:active {
+          cursor: grabbing;
         }
         .page-info {
           color: #fff;
@@ -85,6 +95,15 @@ export function openImageInNewWindow(image: ImageInfo): void {
           font-size: 14px;
           opacity: 0.8;
           text-align: center;
+        }
+        .hint {
+          position: fixed;
+          bottom: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          color: rgba(255,255,255,0.6);
+          font-size: 12px;
+          pointer-events: none;
         }
       </style>
     </head>
@@ -95,15 +114,18 @@ export function openImageInNewWindow(image: ImageInfo): void {
         <button onclick="zoomIn()">+</button>
         <button onclick="resetZoom()">↺</button>
       </div>
-      <div class="image-container">
+      <div class="image-container" id="container">
         <img id="main-img" src="${image.src}" alt="${title}" />
       </div>
       ${pageInfo}
+      <div class="hint">ホイールでスクロール / Ctrl+ホイールで拡大縮小</div>
       <script>
         const img = document.getElementById('main-img');
+        const container = document.getElementById('container');
         const zoomDisplay = document.getElementById('zoom-level');
         let scale = 1;
         let naturalW, naturalH;
+        let fitScale = 1;
         
         img.onload = function() {
           naturalW = img.naturalWidth;
@@ -112,11 +134,12 @@ export function openImageInNewWindow(image: ImageInfo): void {
         };
         
         function fitToWindow() {
-          const maxW = window.innerWidth - 40;
-          const maxH = window.innerHeight - 80;
+          const maxW = window.innerWidth - 60;
+          const maxH = window.innerHeight - 100;
           const ratioW = maxW / naturalW;
           const ratioH = maxH / naturalH;
-          scale = Math.min(ratioW, ratioH, 1);
+          fitScale = Math.min(ratioW, ratioH, 1);
+          scale = fitScale;
           applyScale();
         }
         
@@ -124,6 +147,13 @@ export function openImageInNewWindow(image: ImageInfo): void {
           img.style.width = (naturalW * scale) + 'px';
           img.style.height = (naturalH * scale) + 'px';
           zoomDisplay.textContent = Math.round(scale * 100) + '%';
+          
+          // 拡大時はflex-startにしてスクロール可能に
+          if (scale > fitScale * 1.1) {
+            container.classList.add('zoomed');
+          } else {
+            container.classList.remove('zoomed');
+          }
         }
         
         function zoomIn() {
@@ -138,9 +168,20 @@ export function openImageInNewWindow(image: ImageInfo): void {
         
         function resetZoom() {
           fitToWindow();
+          window.scrollTo(0, 0);
         }
         
-        window.addEventListener('resize', fitToWindow);
+        window.addEventListener('resize', () => {
+          const oldFitScale = fitScale;
+          const maxW = window.innerWidth - 60;
+          const maxH = window.innerHeight - 100;
+          fitScale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+          // 現在のスケールが元のfitScaleと同じなら再調整
+          if (Math.abs(scale - oldFitScale) < 0.01) {
+            scale = fitScale;
+            applyScale();
+          }
+        });
         
         document.addEventListener('wheel', function(e) {
           if (e.ctrlKey) {
@@ -155,6 +196,7 @@ export function openImageInNewWindow(image: ImageInfo): void {
   `)
   newWindow.document.close()
 }
+
 
 /**
  * クリップ画像を新しいウィンドウで開く
@@ -183,8 +225,6 @@ export function openClipInNewWindow(clip: Clip): void {
         body {
           display: flex;
           flex-direction: column;
-          align-items: center;
-          justify-content: flex-start;
           padding: 10px;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
@@ -195,41 +235,54 @@ export function openClipInNewWindow(clip: Clip): void {
           display: flex;
           gap: 5px;
           z-index: 100;
-          background: rgba(0,0,0,0.5);
-          padding: 5px;
-          border-radius: 5px;
+          background: rgba(0,0,0,0.7);
+          padding: 8px;
+          border-radius: 8px;
         }
         .controls button {
           background: rgba(255,255,255,0.9);
           border: none;
           color: #333;
-          width: 32px;
-          height: 32px;
-          border-radius: 4px;
+          width: 36px;
+          height: 36px;
+          border-radius: 6px;
           cursor: pointer;
-          font-size: 18px;
+          font-size: 20px;
           font-weight: bold;
+          transition: transform 0.1s;
         }
         .controls button:hover {
           background: #fff;
+          transform: scale(1.1);
         }
         .controls span {
           color: white;
-          line-height: 32px;
-          padding: 0 8px;
+          line-height: 36px;
+          padding: 0 10px;
           font-size: 14px;
+          min-width: 60px;
+          text-align: center;
         }
         .image-container {
+          flex: 1;
           display: flex;
           align-items: center;
           justify-content: center;
-          min-height: calc(100vh - 80px);
-          width: 100%;
+          padding: 50px 20px 20px;
+          min-width: fit-content;
+        }
+        .image-container.zoomed {
+          align-items: flex-start;
+          justify-content: flex-start;
         }
         img {
           display: block;
           border-radius: 4px;
           box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+          cursor: grab;
+        }
+        img:active {
+          cursor: grabbing;
         }
         .info {
           color: #fff;
@@ -241,6 +294,15 @@ export function openClipInNewWindow(clip: Clip): void {
           font-size: 14px;
           margin-top: 8px;
         }
+        .hint {
+          position: fixed;
+          bottom: 10px;
+          left: 50%;
+          transform: translateX(-50%);
+          color: rgba(255,255,255,0.6);
+          font-size: 12px;
+          pointer-events: none;
+        }
       </style>
     </head>
     <body>
@@ -250,18 +312,21 @@ export function openClipInNewWindow(clip: Clip): void {
         <button onclick="zoomIn()">+</button>
         <button onclick="resetZoom()">↺</button>
       </div>
-      <div class="image-container">
+      <div class="image-container" id="container">
         <img id="main-img" src="${clip.image_data}" alt="クリップ画像" />
       </div>
       <div class="info">
         <strong>ページ ${clip.page_num}</strong>
         ${clip.note ? `<div class="note">${clip.note}</div>` : ''}
       </div>
+      <div class="hint">ホイールでスクロール / Ctrl+ホイールで拡大縮小</div>
       <script>
         const img = document.getElementById('main-img');
+        const container = document.getElementById('container');
         const zoomDisplay = document.getElementById('zoom-level');
         let scale = 1;
         let naturalW, naturalH;
+        let fitScale = 1;
         
         img.onload = function() {
           naturalW = img.naturalWidth;
@@ -270,11 +335,12 @@ export function openClipInNewWindow(clip: Clip): void {
         };
         
         function fitToWindow() {
-          const maxW = window.innerWidth - 40;
-          const maxH = window.innerHeight - 100;
+          const maxW = window.innerWidth - 60;
+          const maxH = window.innerHeight - 120;
           const ratioW = maxW / naturalW;
           const ratioH = maxH / naturalH;
-          scale = Math.min(ratioW, ratioH, 1);
+          fitScale = Math.min(ratioW, ratioH, 1);
+          scale = fitScale;
           applyScale();
         }
         
@@ -282,6 +348,12 @@ export function openClipInNewWindow(clip: Clip): void {
           img.style.width = (naturalW * scale) + 'px';
           img.style.height = (naturalH * scale) + 'px';
           zoomDisplay.textContent = Math.round(scale * 100) + '%';
+          
+          if (scale > fitScale * 1.1) {
+            container.classList.add('zoomed');
+          } else {
+            container.classList.remove('zoomed');
+          }
         }
         
         function zoomIn() {
@@ -296,9 +368,19 @@ export function openClipInNewWindow(clip: Clip): void {
         
         function resetZoom() {
           fitToWindow();
+          window.scrollTo(0, 0);
         }
         
-        window.addEventListener('resize', fitToWindow);
+        window.addEventListener('resize', () => {
+          const oldFitScale = fitScale;
+          const maxW = window.innerWidth - 60;
+          const maxH = window.innerHeight - 120;
+          fitScale = Math.min(maxW / naturalW, maxH / naturalH, 1);
+          if (Math.abs(scale - oldFitScale) < 0.01) {
+            scale = fitScale;
+            applyScale();
+          }
+        });
         
         document.addEventListener('wheel', function(e) {
           if (e.ctrlKey) {
