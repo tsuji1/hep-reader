@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState, type MouseEvent } from 'react
 import { Link, useParams } from 'react-router-dom'
 import AiChat from '../components/AiChat'
 import PdfViewer from '../components/PdfViewer'
+import VocabularyPanel from '../components/VocabularyPanel'
 import { EditableContent, InsertedNote, InsertNoteButton, type NoteData } from '../editor'
 import type { Book, Bookmark, Clip, ClipPosition, Note, PageContent, TocItem, Vocabulary } from '../types'
 import { fixEpubImagePaths, openClipInNewWindow, openImageInNewWindow } from '../utils/window'
@@ -323,6 +324,9 @@ function Reader(): JSX.Element {
     let result = html
     // タグ内のテキストを置換しないよう、正規表現で処理
     for (const vocab of vocabularies) {
+      // 無効なデータをスキップ
+      if (!vocab || !vocab.term || !vocab.description) continue
+
       // タグの外のテキストのみを置換（単純な実装）
       const escapedTerm = vocab.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       // 説明文をHTMLエスケープ
