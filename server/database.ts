@@ -182,6 +182,13 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_vocabularies_term ON vocabularies(term);
 `);
 
+// Migration: Add is_local column if it doesn't exist
+try {
+  db.exec(`ALTER TABLE vocabularies ADD COLUMN is_local INTEGER DEFAULT 0`);
+} catch (e) {
+  // Column already exists, ignore error
+}
+
 // Books
 export function addBook(
   id: string,
