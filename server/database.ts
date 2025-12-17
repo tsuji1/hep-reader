@@ -169,6 +169,18 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_notes_page ON notes(book_id, page_num);
 `);
 
+// Vocabularies table (用語集)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vocabularies (
+    id TEXT PRIMARY KEY,
+    term TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_vocabularies_term ON vocabularies(term);
+`);
+
 // Books
 export function addBook(
   id: string,
@@ -499,6 +511,64 @@ export function deleteNote(id: string): void {
   stmt.run(id);
 }
 
+// Vocabularies (用語集)
+export interface VocabularyRecord {
+  id: string;
+  term: string;
+  description: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export function getAllVocabularies(): VocabularyRecord[] {
+  const stmt = db.prepare('SELECT * FROM vocabularies ORDER BY term');
+  return stmt.all() as VocabularyRecord[];
+}
+
+export function addVocabulary(term: string, description: string): VocabularyRecord {
+  const id = uuidv4();
+  const stmt = db.prepare(`
+    INSERT INTO vocabularies (id, term, description)
+    VALUES (?, ?, ?)
+  `);
+  stmt.run(id, term, description);
+  return {
+    id,
+    term,
+    description,
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString()
+  };
+}
+
+export function updateVocabulary(id: string, { term, description }: { term: string; description: string }): VocabularyRecord | undefined {
+  const stmt = db.prepare(`
+    UPDATE vocabularies SET term = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+  `);
+  stmt.run(term, description, id);
+  const getStmt = db.prepare('SELECT * FROM vocabularies WHERE id = ?');
+  return getStmt.get(id) as VocabularyRecord | undefined;
+}
+
+export function deleteVocabulary(id: string): void {
+  const stmt = db.prepare('DELETE FROM vocabularies WHERE id = ?');
+  stmt.run(id);
+}
+
+export function importVocabularies(items: { term: string; description: string }[]): VocabularyRecord[] {
+  const result: VocabularyRecord[] = [];
+  for (const item of items) {
+    if (!item.term || !item.description) continue;
+    try {
+      const vocab = addVocabulary(item.term, item.description);
+      result.push(vocab);
+    } catch (e) {
+      // Skip duplicates
+    }
+  }
+  return result;
+}
+
 // Default export for backward compatibility
 export default {
   addBook,
@@ -531,5 +601,10 @@ export default {
   getNote,
   addNote,
   updateNote,
-  deleteNote
+  deleteNote,
+  getAllVocabularies,
+  addVocabulary,
+  updateVocabulary,
+  deleteVocabulary,
+  importVocabularies
 };

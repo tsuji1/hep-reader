@@ -2592,6 +2592,84 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== Vocabularies APIs (用語集) ====================
+
+// Get all vocabularies
+app.get('/api/vocabularies', (_req: Request, res: Response) => {
+  try {
+    const vocabularies = db.getAllVocabularies();
+    res.json(vocabularies);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Add vocabulary
+app.post('/api/vocabularies', (req: Request, res: Response) => {
+  try {
+    const { term, description } = req.body;
+    if (!term || !description) {
+      return res.status(400).json({ error: 'term and description are required' });
+    }
+    const vocabulary = db.addVocabulary(term, description);
+    res.json(vocabulary);
+  } catch (error) {
+    const err = error as Error & { message: string };
+    if (err.message.includes('UNIQUE constraint failed')) {
+      return res.status(400).json({ error: 'This term already exists' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Update vocabulary
+app.put('/api/vocabularies/:id', (req: Request, res: Response) => {
+  try {
+    const { term, description } = req.body;
+    if (!term || !description) {
+      return res.status(400).json({ error: 'term and description are required' });
+    }
+    const vocabulary = db.updateVocabulary(req.params.id, { term, description });
+    res.json(vocabulary);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Delete vocabulary
+app.delete('/api/vocabularies/:id', (req: Request, res: Response) => {
+  try {
+    db.deleteVocabulary(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Export vocabularies
+app.get('/api/vocabularies/export', (_req: Request, res: Response) => {
+  try {
+    const vocabularies = db.getAllVocabularies();
+    res.json(vocabularies);
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
+// Import vocabularies
+app.post('/api/vocabularies/import', (req: Request, res: Response) => {
+  try {
+    const { vocabularies } = req.body;
+    if (!Array.isArray(vocabularies)) {
+      return res.status(400).json({ error: 'vocabularies must be an array' });
+    }
+    const result = db.importVocabularies(vocabularies);
+    res.json({ success: true, count: result.length, vocabularies: result });
+  } catch (error) {
+    res.status(500).json({ error: (error as Error).message });
+  }
+});
+
 // Serve React app for all other routes in production
 if (process.env.NODE_ENV === 'production') {
   app.get('*', (_req: Request, res: Response) => {
