@@ -259,6 +259,66 @@ function Reader(): JSX.Element {
     return () => container.removeEventListener('click', handleImageClick)
   }, [isPdf, loading])
 
+  // 用語ツールチップの位置を動的に調整
+  useEffect(() => {
+    if (isPdf || !contentRef.current) return
+
+    const handleVocabHover = (e: Event): void => {
+      const target = e.target as HTMLElement
+      if (!target.classList.contains('vocab-term')) return
+
+      const rect = target.getBoundingClientRect()
+      const tooltipWidth = 300 // max-width
+      const tooltipHeight = 80 // approximately
+      const padding = 10
+
+      // 水平位置を計算
+      let left = rect.left + rect.width / 2 - tooltipWidth / 2
+      if (left < padding) left = padding
+      if (left + tooltipWidth > window.innerWidth - padding) {
+        left = window.innerWidth - tooltipWidth - padding
+      }
+
+      // 垂直位置: 上に表示するか下に表示するか
+      let top: number
+      if (rect.top > tooltipHeight + padding + 10) {
+        // 上に表示
+        top = rect.top - tooltipHeight - 8
+      } else {
+        // 下に表示
+        top = rect.bottom + 8
+      }
+
+      // CSS変数で位置を設定
+      target.style.setProperty('--tooltip-left', `${left}px`)
+      target.style.setProperty('--tooltip-top', `${top}px`)
+    }
+
+    const applyTooltipPosition = (): void => {
+      const style = document.createElement('style')
+      style.id = 'vocab-tooltip-position'
+      style.textContent = `
+        .vocab-term::after {
+          left: var(--tooltip-left, 50%) !important;
+          top: var(--tooltip-top, auto) !important;
+          transform: none !important;
+        }
+      `
+      if (!document.getElementById('vocab-tooltip-position')) {
+        document.head.appendChild(style)
+      }
+    }
+    applyTooltipPosition()
+
+    const container = contentRef.current
+    container.addEventListener('mouseenter', handleVocabHover, true)
+    return () => {
+      container.removeEventListener('mouseenter', handleVocabHover, true)
+      const style = document.getElementById('vocab-tooltip-position')
+      if (style) style.remove()
+    }
+  }, [isPdf, loading, vocabularies])
+
   // スマホ向けダブルタップでツールバー表示
   const handleDoubleTap = useCallback((e: React.TouchEvent): void => {
     // 画像やリンクなど、特定の要素ではダブルタップを無視

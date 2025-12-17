@@ -84,15 +84,39 @@ export default function VocabularyPanel({ onClose, onVocabulariesChange }: Vocab
 
   const handleImport = async () => {
     try {
-      const parsed = JSON.parse(importText)
-      const items = Array.isArray(parsed) ? parsed : [parsed]
+      let items: Array<{ term: string; description: string }> = []
+      
+      // テキスト形式（用語|説明）をチェック
+      if (importText.includes('|') && !importText.trim().startsWith('[') && !importText.trim().startsWith('{')) {
+        // テキスト形式でパース
+        const lines = importText.split('\n').filter(line => line.trim())
+        for (const line of lines) {
+          const parts = line.split('|')
+          if (parts.length >= 2) {
+            const term = parts[0].trim()
+            const description = parts.slice(1).join('|').trim()
+            if (term && description) {
+              items.push({ term, description })
+            }
+          }
+        }
+        if (items.length === 0) {
+          alert('有効な用語が見つかりませんでした。\n形式: 用語|説明')
+          return
+        }
+      } else {
+        // JSON形式でパース
+        const parsed = JSON.parse(importText)
+        items = Array.isArray(parsed) ? parsed : [parsed]
+      }
+      
       await axios.post('/api/vocabularies/import', { vocabularies: items })
       setImportText('')
       setShowImport(false)
       fetchVocabularies()
       alert(`${items.length}件の用語をインポートしました`)
     } catch (err) {
-      alert('インポートに失敗しました。JSONの形式を確認してください。')
+      alert('インポートに失敗しました。\n\n形式1: 用語|説明（1行1用語）\n形式2: JSON [{\"term\": \"用語\", \"description\": \"説明\"}]')
     }
   }
 
@@ -142,7 +166,7 @@ export default function VocabularyPanel({ onClose, onVocabulariesChange }: Vocab
       {showImport && (
         <div className="vocabulary-import">
           <textarea
-            placeholder='JSON形式で貼り付け: [{"term": "RAN", "description": "説明..."}]'
+            placeholder={'用語|説明\nRAN|無線アクセスネットワーク\nUE|ユーザー端末\n\nまたはJSON形式'}
             value={importText}
             onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setImportText(e.target.value)}
             rows={4}

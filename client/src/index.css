@@ -2078,10 +2078,7 @@ body {
 /* ツールチップはattr()でdata属性から表示 */
 .vocab-term::after {
   content: attr(data-description);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
   background: #333;
   color: white;
   padding: 10px 14px;
@@ -2091,12 +2088,15 @@ body {
   max-width: 300px;
   width: max-content;
   white-space: normal;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
-  transition: opacity 0.2s, visibility 0.2s;
+  transition: opacity 0.15s, visibility 0.15s;
+  /* デフォルト位置は非表示時用 */
+  top: 0;
+  left: 0;
 }
 
 .vocab-term:hover::after,
@@ -2105,11 +2105,17 @@ body {
   visibility: visible;
 }
 
+/* 位置調整用のCSS変数を使用 */
+.vocab-term[data-tooltip-pos="top"]::after {
+  /* JavaScriptで動的に設定 */
+}
+
+.vocab-term[data-tooltip-pos="bottom"]::after {
+  /* JavaScriptで動的に設定 */
+}
+
 .vocab-tooltip {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
+  position: fixed;
   background: #333;
   color: white;
   padding: 10px 14px;
@@ -2118,19 +2124,9 @@ body {
   line-height: 1.5;
   max-width: 300px;
   white-space: normal;
-  z-index: 1000;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  z-index: 10000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
   pointer-events: none;
-}
-
-.vocab-tooltip::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 8px solid transparent;
-  border-top-color: #333;
 }
 
 @media (max-width: 768px) {
