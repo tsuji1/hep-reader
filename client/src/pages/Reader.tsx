@@ -311,9 +311,11 @@ function Reader(): JSX.Element {
   const fetchVocabularies = async (): Promise<void> => {
     try {
       const res = await axios.get<Vocabulary[]>('/api/vocabularies')
-      setVocabularies(res.data)
+      const data = Array.isArray(res.data) ? res.data : []
+      setVocabularies(data)
     } catch (error) {
       console.error('Failed to fetch vocabularies:', error)
+      setVocabularies([])
     }
   }
 

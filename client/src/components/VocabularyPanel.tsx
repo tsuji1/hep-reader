@@ -22,10 +22,12 @@ export default function VocabularyPanel({ onClose, onVocabulariesChange }: Vocab
   const fetchVocabularies = useCallback(async () => {
     try {
       const res = await axios.get<Vocabulary[]>('/api/vocabularies')
-      setVocabularies(res.data)
-      onVocabulariesChange?.(res.data)
+      const data = Array.isArray(res.data) ? res.data : []
+      setVocabularies(data)
+      onVocabulariesChange?.(data)
     } catch (err) {
       console.error('Failed to fetch vocabularies:', err)
+      setVocabularies([])
     } finally {
       setLoading(false)
     }
