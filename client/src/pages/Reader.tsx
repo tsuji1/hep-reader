@@ -6,7 +6,7 @@ import { Link, useParams } from 'react-router-dom'
 import AiChat from '../components/AiChat'
 import PdfViewer from '../components/PdfViewer'
 import { EditableContent, InsertedNote, InsertNoteButton, type NoteData } from '../editor'
-import type { Book, Bookmark, Clip, ClipPosition, Note, PageContent, TocItem } from '../types'
+import type { Book, Bookmark, Clip, ClipPosition, Note, PageContent, TocItem, Vocabulary } from '../types'
 import { fixEpubImagePaths, openClipInNewWindow, openImageInNewWindow } from '../utils/window'
 
 // Suppress highlight.js warnings for unescaped HTML
@@ -60,6 +60,11 @@ function Reader(): JSX.Element {
   // スマホ向けツールバー表示
   const [toolbarVisible, setToolbarVisible] = useState<boolean>(false)
   const lastTapTimeRef = useRef<number>(0)
+
+  // 用語集機能
+  const [showVocabulary, setShowVocabulary] = useState<boolean>(false)
+  const [vocabularies, setVocabularies] = useState<Vocabulary[]>([])
+  const [activeTooltip, setActiveTooltip] = useState<string | null>(null)
 
   const contentRef = useRef<HTMLDivElement>(null)
   const pageRefs = useRef<Record<number, HTMLDivElement | null>>({})
@@ -115,6 +120,7 @@ function Reader(): JSX.Element {
         fetchClips()
         fetchNotes()
         fetchTranslationStatus()
+        fetchVocabularies()
 
         setLoading(false)
       } catch (error) {
@@ -300,6 +306,36 @@ function Reader(): JSX.Element {
       console.error('Failed to fetch translation status:', error)
     }
   }
+
+  const fetchVocabularies = async (): Promise<void> => {
+    try {
+      const res = await axios.get<Vocabulary[]>('/api/vocabularies')
+      setVocabularies(res.data)
+    } catch (error) {
+      console.error('Failed to fetch vocabularies:', error)
+    }
+  }
+
+  // 用語をハイライトしたHTMLを生成
+  const highlightVocabularies = useCallback((html: string): string => {
+    if (vocabularies.length === 0) return html
+
+    let result = html
+    // タグ内のテキストを置換しないよう、正規表現で処理
+    for (const vocab of vocabularies) {
+      // タグの外のテキストのみを置換（単純な実装）
+      const escapedTerm = vocab.term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      // 説明文をHTMLエスケープ
+      const escapedDescription = vocab.description
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+      const regex = new RegExp(`(?<![<][^>]*)(${escapedTerm})(?![^<]*[>])`, 'g')
+      result = result.replace(regex, `<span class="vocab-term" data-vocab-id="${vocab.id}" data-description="${escapedDescription}" tabindex="0">$1</span>`)
+    }
+    return result
+  }, [vocabularies])
 
   const fetchNotes = async (): Promise<void> => {
     try {
@@ -658,9 +694,10 @@ function Reader(): JSX.Element {
     }
   }
 
-  // Fix image paths in content
+  // Fix image paths in content and highlight vocabularies
   const fixContent = (content: string): string => {
-    return fixEpubImagePaths(content, bookId || '')
+    const fixed = fixEpubImagePaths(content, bookId || '')
+    return highlightVocabularies(fixed)
   }
 
   // 現在のページのコンテンツをAIのコンテキストとして取得（前後2ページ含む）
@@ -1047,6 +1084,23 @@ function Reader(): JSX.Element {
                 </div>
               )}
 
+              {/* 用語集ボタン（EPUB/Webのみ） */}
+              {!isPdf && (
+                <button
+                  className={`secondary ${showVocabulary ? 'active' : ''}`}
+                  onClick={() => setShowVocabulary(!showVocabulary)}
+                  title="用語集を開く"
+                  style={{
+                    fontSize: '0.85rem',
+                    padding: '6px 10px',
+                    background: showVocabulary ? '#667eea' : undefined,
+                    color: showVocabulary ? 'white' : undefined
+                  }}
+                >
+                  📖 用語集 {vocabularies.length > 0 && `(${vocabularies.length})`}
+                </button>
+              )}
+
               <div className="view-mode-toggle">
                 <button
                   className={viewMode === 'scroll' ? 'active' : ''}
@@ -1398,6 +1452,29 @@ function Reader(): JSX.Element {
         >
           🤖
         </button>
+      )}
+
+      {/* Vocabulary Panel */}
+      {showVocabulary && (
+        <VocabularyPanel
+          onClose={() => setShowVocabulary(false)}
+          onVocabulariesChange={setVocabularies}
+        />
+      )}
+
+      {/* Vocabulary Tooltip */}
+      {activeTooltip && (
+        <div
+          className="vocab-tooltip"
+          style={{
+            position: 'fixed',
+            top: '50%',
+            left: '50%',
+            transform: 'translate(-50%, -50%)'
+          }}
+        >
+          {vocabularies.find(v => v.id === activeTooltip)?.description}
+        </div>
       )}
     </div>
   )

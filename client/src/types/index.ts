@@ -83,3 +83,12 @@ export interface Note {
   created_at: string
   updated_at: string
 }
+
+// Vocabulary Types (用語集)
+export interface Vocabulary {
+  id: string
+  term: string
+  description: string
+  created_at?: string
+  updated_at?: string
+}

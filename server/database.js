@@ -98,6 +98,18 @@ db.exec(`
   );
 `);
 
+// Create vocabularies table (用語集)
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vocabularies (
+    id TEXT PRIMARY KEY,
+    term TEXT NOT NULL UNIQUE,
+    description TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE INDEX IF NOT EXISTS idx_vocabularies_term ON vocabularies(term);
+`);
+
 module.exports = {
   // Books
   addBook(id, title, originalFilename, totalPages, bookType = 'epub') {
@@ -263,5 +275,50 @@ module.exports = {
   deleteAiSetting(provider) {
     const stmt = db.prepare('DELETE FROM ai_settings WHERE provider = ?');
     stmt.run(provider);
+  },
+
+  // Vocabularies (用語集)
+  getAllVocabularies() {
+    const stmt = db.prepare('SELECT * FROM vocabularies ORDER BY term');
+    return stmt.all();
+  },
+
+  addVocabulary(term, description) {
+    const id = uuidv4();
+    const stmt = db.prepare(`
+      INSERT INTO vocabularies (id, term, description)
+      VALUES (?, ?, ?)
+    `);
+    stmt.run(id, term, description);
+    return { id, term, description };
+  },
+
+  updateVocabulary(id, { term, description }) {
+    const stmt = db.prepare(`
+      UPDATE vocabularies SET term = ?, description = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `);
+    stmt.run(term, description, id);
+    return { id, term, description };
+  },
+
+  deleteVocabulary(id) {
+    const stmt = db.prepare('DELETE FROM vocabularies WHERE id = ?');
+    stmt.run(id);
+  },
+
+  importVocabularies(vocabularies) {
+    const insertStmt = db.prepare(`
+      INSERT OR REPLACE INTO vocabularies (id, term, description)
+      VALUES (?, ?, ?)
+    `);
+    const transaction = db.transaction((items) => {
+      for (const item of items) {
+        const id = item.id || uuidv4();
+        insertStmt.run(id, item.term, item.description);
+      }
+    });
+    transaction(vocabularies);
+    return this.getAllVocabularies();
   }
 };
