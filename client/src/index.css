@@ -2020,6 +2020,36 @@ body {
   opacity: 1;
 }
 
+.vocabulary-buttons .local-btn {
+  opacity: 0.4;
+}
+
+.vocabulary-buttons .local-btn.active {
+  opacity: 1;
+  background: rgba(102, 126, 234, 0.15);
+  border-radius: 4px;
+}
+
+.local-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #666;
+  cursor: pointer;
+}
+
+.local-checkbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.local-badge {
+  font-size: 0.75rem;
+  margin-left: 4px;
+}
+
 .vocabulary-edit {
   width: 100%;
   display: flex;

@@ -175,6 +175,7 @@ db.exec(`
     id TEXT PRIMARY KEY,
     term TEXT NOT NULL UNIQUE,
     description TEXT NOT NULL,
+    is_local INTEGER DEFAULT 0,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -516,38 +517,48 @@ export interface VocabularyRecord {
   id: string;
   term: string;
   description: string;
+  is_local: boolean;
   created_at?: string;
   updated_at?: string;
 }
 
 export function getAllVocabularies(): VocabularyRecord[] {
   const stmt = db.prepare('SELECT * FROM vocabularies ORDER BY term');
-  return stmt.all() as VocabularyRecord[];
+  const rows = stmt.all() as Array<{ id: string; term: string; description: string; is_local: number; created_at?: string; updated_at?: string }>;
+  return rows.map(row => ({ ...row, is_local: row.is_local === 1 }));
 }
 
-export function addVocabulary(term: string, description: string): VocabularyRecord {
+export function getExportableVocabularies(): VocabularyRecord[] {
+  const stmt = db.prepare('SELECT * FROM vocabularies WHERE is_local = 0 ORDER BY term');
+  const rows = stmt.all() as Array<{ id: string; term: string; description: string; is_local: number; created_at?: string; updated_at?: string }>;
+  return rows.map(row => ({ ...row, is_local: false }));
+}
+
+export function addVocabulary(term: string, description: string, isLocal: boolean = false): VocabularyRecord {
   const id = uuidv4();
   const stmt = db.prepare(`
-    INSERT INTO vocabularies (id, term, description)
-    VALUES (?, ?, ?)
+    INSERT INTO vocabularies (id, term, description, is_local)
+    VALUES (?, ?, ?, ?)
   `);
-  stmt.run(id, term, description);
+  stmt.run(id, term, description, isLocal ? 1 : 0);
   return {
     id,
     term,
     description,
+    is_local: isLocal,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };
 }
 
-export function updateVocabulary(id: string, { term, description }: { term: string; description: string }): VocabularyRecord | undefined {
+export function updateVocabulary(id: string, { term, description, is_local }: { term: string; description: string; is_local?: boolean }): VocabularyRecord | undefined {
   const stmt = db.prepare(`
-    UPDATE vocabularies SET term = ?, description = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?
+    UPDATE vocabularies SET term = ?, description = ?, is_local = COALESCE(?, is_local), updated_at = CURRENT_TIMESTAMP WHERE id = ?
   `);
-  stmt.run(term, description, id);
+  stmt.run(term, description, is_local !== undefined ? (is_local ? 1 : 0) : null, id);
   const getStmt = db.prepare('SELECT * FROM vocabularies WHERE id = ?');
-  return getStmt.get(id) as VocabularyRecord | undefined;
+  const row = getStmt.get(id) as { id: string; term: string; description: string; is_local: number; created_at?: string; updated_at?: string } | undefined;
+  return row ? { ...row, is_local: row.is_local === 1 } : undefined;
 }
 
 export function deleteVocabulary(id: string): void {
@@ -555,12 +566,12 @@ export function deleteVocabulary(id: string): void {
   stmt.run(id);
 }
 
-export function importVocabularies(items: { term: string; description: string }[]): VocabularyRecord[] {
+export function importVocabularies(items: { term: string; description: string; is_local?: boolean }[]): VocabularyRecord[] {
   const result: VocabularyRecord[] = [];
   for (const item of items) {
     if (!item.term || !item.description) continue;
     try {
-      const vocab = addVocabulary(item.term, item.description);
+      const vocab = addVocabulary(item.term, item.description, item.is_local || false);
       result.push(vocab);
     } catch (e) {
       // Skip duplicates
@@ -603,6 +614,7 @@ export default {
   updateNote,
   deleteNote,
   getAllVocabularies,
+  getExportableVocabularies,
   addVocabulary,
   updateVocabulary,
   deleteVocabulary,

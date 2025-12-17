@@ -2607,11 +2607,11 @@ app.get('/api/vocabularies', (_req: Request, res: Response) => {
 // Add vocabulary
 app.post('/api/vocabularies', (req: Request, res: Response) => {
   try {
-    const { term, description } = req.body;
+    const { term, description, is_local } = req.body;
     if (!term || !description) {
       return res.status(400).json({ error: 'term and description are required' });
     }
-    const vocabulary = db.addVocabulary(term, description);
+    const vocabulary = db.addVocabulary(term, description, is_local || false);
     res.json(vocabulary);
   } catch (error) {
     const err = error as Error & { message: string };
@@ -2625,11 +2625,11 @@ app.post('/api/vocabularies', (req: Request, res: Response) => {
 // Update vocabulary
 app.put('/api/vocabularies/:id', (req: Request, res: Response) => {
   try {
-    const { term, description } = req.body;
+    const { term, description, is_local } = req.body;
     if (!term || !description) {
       return res.status(400).json({ error: 'term and description are required' });
     }
-    const vocabulary = db.updateVocabulary(req.params.id, { term, description });
+    const vocabulary = db.updateVocabulary(req.params.id, { term, description, is_local });
     res.json(vocabulary);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });
@@ -2646,10 +2646,10 @@ app.delete('/api/vocabularies/:id', (req: Request, res: Response) => {
   }
 });
 
-// Export vocabularies
+// Export vocabularies (exclude local-only terms)
 app.get('/api/vocabularies/export', (_req: Request, res: Response) => {
   try {
-    const vocabularies = db.getAllVocabularies();
+    const vocabularies = db.getExportableVocabularies();
     res.json(vocabularies);
   } catch (error) {
     res.status(500).json({ error: (error as Error).message });

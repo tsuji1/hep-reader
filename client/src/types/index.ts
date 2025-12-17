@@ -89,6 +89,7 @@ export interface Vocabulary {
   id: string
   term: string
   description: string
+  is_local?: boolean
   created_at?: string
   updated_at?: string
 }

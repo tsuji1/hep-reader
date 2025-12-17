@@ -15,6 +15,7 @@ export default function VocabularyPanel({ onClose, onVocabulariesChange }: Vocab
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editTerm, setEditTerm] = useState('')
   const [editDescription, setEditDescription] = useState('')
+  const [editIsLocal, setEditIsLocal] = useState(false)
   const [importText, setImportText] = useState('')
   const [showImport, setShowImport] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -57,11 +58,24 @@ export default function VocabularyPanel({ onClose, onVocabulariesChange }: Vocab
     if (!editTerm.trim() || !editDescription.trim()) return
 
     try {
-      await axios.put(`/api/vocabularies/${id}`, { term: editTerm.trim(), description: editDescription.trim() })
+      await axios.put(`/api/vocabularies/${id}`, { term: editTerm.trim(), description: editDescription.trim(), is_local: editIsLocal })
       setEditingId(null)
       fetchVocabularies()
     } catch (err) {
       console.error('Failed to update vocabulary:', err)
+    }
+  }
+
+  const toggleLocalFlag = async (vocab: Vocabulary) => {
+    try {
+      await axios.put(`/api/vocabularies/${vocab.id}`, { 
+        term: vocab.term, 
+        description: vocab.description, 
+        is_local: !vocab.is_local 
+      })
+      fetchVocabularies()
+    } catch (err) {
+      console.error('Failed to toggle local flag:', err)
     }
   }
 
@@ -124,6 +138,7 @@ export default function VocabularyPanel({ onClose, onVocabulariesChange }: Vocab
     setEditingId(vocab.id)
     setEditTerm(vocab.term)
     setEditDescription(vocab.description)
+    setEditIsLocal(vocab.is_local || false)
   }
 
   return (
@@ -198,6 +213,14 @@ export default function VocabularyPanel({ onClose, onVocabulariesChange }: Vocab
                     onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setEditDescription(e.target.value)}
                     rows={2}
                   />
+                  <label className="local-checkbox">
+                    <input
+                      type="checkbox"
+                      checked={editIsLocal}
+                      onChange={(e: ChangeEvent<HTMLInputElement>) => setEditIsLocal(e.target.checked)}
+                    />
+                    狭義（この記事のみ）
+                  </label>
                   <div className="edit-buttons">
                     <button onClick={() => handleUpdate(vocab.id)}>保存</button>
                     <button onClick={() => setEditingId(null)} className="secondary">キャンセル</button>
@@ -208,8 +231,16 @@ export default function VocabularyPanel({ onClose, onVocabulariesChange }: Vocab
                   <div className="vocabulary-content">
                     <span className="vocab-term-display">{vocab.term}</span>
                     <span className="vocab-description">{vocab.description}</span>
+                    {vocab.is_local && <span className="local-badge" title="この記事のみ（エクスポート対象外）">📌</span>}
                   </div>
                   <div className="vocabulary-buttons">
+                    <button 
+                      onClick={() => toggleLocalFlag(vocab)} 
+                      className={`local-btn ${vocab.is_local ? 'active' : ''}`} 
+                      title={vocab.is_local ? '共通用語にする' : '狭義（この記事のみ）にする'}
+                    >
+                      📌
+                    </button>
                     <button onClick={() => startEdit(vocab)} className="edit-btn" title="編集">✏️</button>
                     <button onClick={() => handleDelete(vocab.id)} className="delete-btn" title="削除">🗑️</button>
                   </div>
