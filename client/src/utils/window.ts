@@ -122,7 +122,7 @@ export function openImageInNewWindow(image: ImageInfo): void {
         <button onclick="resetZoom()">↺</button>
       </div>
       <div class="image-container" id="container">
-        <img id="main-img" src="${image.src}" alt="${title}" />
+        <img id="main-img" src="${image.src}" alt="${title}" draggable="false" ondragstart="return false" />
       </div>
       ${pageInfo}
       <div class="hint">ドラッグで移動 / Ctrl+ホイールで拡大縮小</div>
@@ -362,7 +362,7 @@ export function openClipInNewWindow(clip: Clip): void {
         <button onclick="resetZoom()">↺</button>
       </div>
       <div class="image-container" id="container">
-        <img id="main-img" src="${clip.image_data}" alt="クリップ画像" />
+        <img id="main-img" src="${clip.image_data}" alt="クリップ画像" draggable="false" ondragstart="return false" />
       </div>
       <div class="info">
         <strong>ページ ${clip.page_num}</strong>
