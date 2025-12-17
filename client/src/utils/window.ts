@@ -105,6 +105,13 @@ export function openImageInNewWindow(image: ImageInfo): void {
           font-size: 12px;
           pointer-events: none;
         }
+        body.dragging {
+          cursor: grabbing !important;
+          user-select: none;
+        }
+        body.dragging img {
+          cursor: grabbing !important;
+        }
       </style>
     </head>
     <body>
@@ -118,7 +125,7 @@ export function openImageInNewWindow(image: ImageInfo): void {
         <img id="main-img" src="${image.src}" alt="${title}" />
       </div>
       ${pageInfo}
-      <div class="hint">ホイールでスクロール / Ctrl+ホイールで拡大縮小</div>
+      <div class="hint">ドラッグで移動 / Ctrl+ホイールで拡大縮小</div>
       <script>
         const img = document.getElementById('main-img');
         const container = document.getElementById('container');
@@ -126,6 +133,10 @@ export function openImageInNewWindow(image: ImageInfo): void {
         let scale = 1;
         let naturalW, naturalH;
         let fitScale = 1;
+        
+        // ドラッグ用変数
+        let isDragging = false;
+        let startX, startY, scrollLeft, scrollTop;
         
         img.onload = function() {
           naturalW = img.naturalWidth;
@@ -176,7 +187,6 @@ export function openImageInNewWindow(image: ImageInfo): void {
           const maxW = window.innerWidth - 60;
           const maxH = window.innerHeight - 100;
           fitScale = Math.min(maxW / naturalW, maxH / naturalH, 1);
-          // 現在のスケールが元のfitScaleと同じなら再調整
           if (Math.abs(scale - oldFitScale) < 0.01) {
             scale = fitScale;
             applyScale();
@@ -190,6 +200,38 @@ export function openImageInNewWindow(image: ImageInfo): void {
             else zoomOut();
           }
         }, { passive: false });
+        
+        // ドラッグ処理
+        document.addEventListener('mousedown', function(e) {
+          if (e.button !== 0) return; // 左クリックのみ
+          if (e.target.closest('.controls')) return; // コントロール上は無視
+          
+          isDragging = true;
+          startX = e.clientX;
+          startY = e.clientY;
+          scrollLeft = window.scrollX;
+          scrollTop = window.scrollY;
+          document.body.classList.add('dragging');
+          e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', function(e) {
+          if (!isDragging) return;
+          
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          window.scrollTo(scrollLeft - dx, scrollTop - dy);
+        });
+        
+        document.addEventListener('mouseup', function() {
+          isDragging = false;
+          document.body.classList.remove('dragging');
+        });
+        
+        document.addEventListener('mouseleave', function() {
+          isDragging = false;
+          document.body.classList.remove('dragging');
+        });
       </script>
     </body>
     </html>
@@ -303,6 +345,13 @@ export function openClipInNewWindow(clip: Clip): void {
           font-size: 12px;
           pointer-events: none;
         }
+        body.dragging {
+          cursor: grabbing !important;
+          user-select: none;
+        }
+        body.dragging img {
+          cursor: grabbing !important;
+        }
       </style>
     </head>
     <body>
@@ -319,7 +368,7 @@ export function openClipInNewWindow(clip: Clip): void {
         <strong>ページ ${clip.page_num}</strong>
         ${clip.note ? `<div class="note">${clip.note}</div>` : ''}
       </div>
-      <div class="hint">ホイールでスクロール / Ctrl+ホイールで拡大縮小</div>
+      <div class="hint">ドラッグで移動 / Ctrl+ホイールで拡大縮小</div>
       <script>
         const img = document.getElementById('main-img');
         const container = document.getElementById('container');
@@ -327,6 +376,10 @@ export function openClipInNewWindow(clip: Clip): void {
         let scale = 1;
         let naturalW, naturalH;
         let fitScale = 1;
+        
+        // ドラッグ用変数
+        let isDragging = false;
+        let startX, startY, scrollLeft, scrollTop;
         
         img.onload = function() {
           naturalW = img.naturalWidth;
@@ -389,6 +442,38 @@ export function openClipInNewWindow(clip: Clip): void {
             else zoomOut();
           }
         }, { passive: false });
+        
+        // ドラッグ処理
+        document.addEventListener('mousedown', function(e) {
+          if (e.button !== 0) return;
+          if (e.target.closest('.controls')) return;
+          
+          isDragging = true;
+          startX = e.clientX;
+          startY = e.clientY;
+          scrollLeft = window.scrollX;
+          scrollTop = window.scrollY;
+          document.body.classList.add('dragging');
+          e.preventDefault();
+        });
+        
+        document.addEventListener('mousemove', function(e) {
+          if (!isDragging) return;
+          
+          const dx = e.clientX - startX;
+          const dy = e.clientY - startY;
+          window.scrollTo(scrollLeft - dx, scrollTop - dy);
+        });
+        
+        document.addEventListener('mouseup', function() {
+          isDragging = false;
+          document.body.classList.remove('dragging');
+        });
+        
+        document.addEventListener('mouseleave', function() {
+          isDragging = false;
+          document.body.classList.remove('dragging');
+        });
       </script>
     </body>
     </html>
