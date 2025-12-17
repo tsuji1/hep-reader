@@ -5,7 +5,7 @@ import type { Clip, ImageInfo } from '../types'
  * EPUBの画像やPDFのクリップ画像を別ウィンドウで表示する共通関数
  */
 export function openImageInNewWindow(image: ImageInfo): void {
-  const newWindow = window.open('', '_blank', 'width=900,height=700,resizable=yes,scrollbars=yes')
+  const newWindow = window.open('', '_blank', 'width=900,height=700,resizable=yes,scrollbars=no')
   if (!newWindow) {
     alert('ポップアップがブロックされました。ポップアップを許可してください。')
     return
@@ -24,13 +24,13 @@ export function openImageInNewWindow(image: ImageInfo): void {
         html, body {
           width: 100%;
           height: 100%;
-          overflow: auto;
+          overflow: hidden;
           background: #1a1a2e;
         }
         body {
           display: flex;
-          flex-direction: column;
-          padding: 10px;
+          align-items: center;
+          justify-content: center;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         .controls {
@@ -68,28 +68,34 @@ export function openImageInNewWindow(image: ImageInfo): void {
           min-width: 60px;
           text-align: center;
         }
-        .image-container {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 50px 20px 20px;
-          min-width: fit-content;
-        }
-        .image-container.zoomed {
-          align-items: flex-start;
-          justify-content: flex-start;
-        }
-        img {
-          display: block;
-          border-radius: 4px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        .image-wrapper {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
           cursor: grab;
         }
-        img:active {
+        .image-wrapper:active {
           cursor: grabbing;
         }
+        .image-wrapper.dragging {
+          cursor: grabbing;
+        }
+        img {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          border-radius: 4px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+          transform-origin: center center;
+          user-select: none;
+          -webkit-user-drag: none;
+        }
         .page-info {
+          position: fixed;
+          bottom: 40px;
+          left: 50%;
+          transform: translateX(-50%);
           color: #fff;
           padding: 10px;
           font-size: 14px;
@@ -105,13 +111,6 @@ export function openImageInNewWindow(image: ImageInfo): void {
           font-size: 12px;
           pointer-events: none;
         }
-        body.dragging {
-          cursor: grabbing !important;
-          user-select: none;
-        }
-        body.dragging img {
-          cursor: grabbing !important;
-        }
       </style>
     </head>
     <body>
@@ -121,22 +120,25 @@ export function openImageInNewWindow(image: ImageInfo): void {
         <button onclick="zoomIn()">+</button>
         <button onclick="resetZoom()">↺</button>
       </div>
-      <div class="image-container" id="container">
-        <img id="main-img" src="${image.src}" alt="${title}" draggable="false" ondragstart="return false" />
+      <div class="image-wrapper" id="wrapper">
+        <img id="main-img" src="${image.src}" alt="${title}" draggable="false" />
       </div>
       ${pageInfo}
-      <div class="hint">ドラッグで移動 / Ctrl+ホイールで拡大縮小</div>
+      <div class="hint">ドラッグで移動 / ホイール or Ctrl+ホイールで拡大縮小</div>
       <script>
         const img = document.getElementById('main-img');
-        const container = document.getElementById('container');
+        const wrapper = document.getElementById('wrapper');
         const zoomDisplay = document.getElementById('zoom-level');
+        
         let scale = 1;
+        let panX = 0;
+        let panY = 0;
         let naturalW, naturalH;
         let fitScale = 1;
         
-        // ドラッグ用変数
+        // ドラッグ用
         let isDragging = false;
-        let startX, startY, scrollLeft, scrollTop;
+        let startX, startY, startPanX, startPanY;
         
         img.onload = function() {
           naturalW = img.naturalWidth;
@@ -145,92 +147,71 @@ export function openImageInNewWindow(image: ImageInfo): void {
         };
         
         function fitToWindow() {
-          const maxW = window.innerWidth - 60;
-          const maxH = window.innerHeight - 100;
+          const maxW = window.innerWidth - 40;
+          const maxH = window.innerHeight - 60;
           const ratioW = maxW / naturalW;
           const ratioH = maxH / naturalH;
           fitScale = Math.min(ratioW, ratioH, 1);
           scale = fitScale;
-          applyScale();
+          panX = 0;
+          panY = 0;
+          applyTransform();
         }
         
-        function applyScale() {
-          img.style.width = (naturalW * scale) + 'px';
-          img.style.height = (naturalH * scale) + 'px';
+        function applyTransform() {
+          const w = naturalW * scale;
+          const h = naturalH * scale;
+          img.style.width = w + 'px';
+          img.style.height = h + 'px';
+          img.style.transform = 'translate(calc(-50% + ' + panX + 'px), calc(-50% + ' + panY + 'px))';
           zoomDisplay.textContent = Math.round(scale * 100) + '%';
-          
-          // 拡大時はflex-startにしてスクロール可能に
-          if (scale > fitScale * 1.1) {
-            container.classList.add('zoomed');
-          } else {
-            container.classList.remove('zoomed');
-          }
         }
         
         function zoomIn() {
-          scale = Math.min(5, scale + 0.25);
-          applyScale();
+          scale = Math.min(10, scale * 1.25);
+          applyTransform();
         }
         
         function zoomOut() {
-          scale = Math.max(0.1, scale - 0.25);
-          applyScale();
+          scale = Math.max(0.1, scale / 1.25);
+          applyTransform();
         }
         
         function resetZoom() {
           fitToWindow();
-          window.scrollTo(0, 0);
         }
         
-        window.addEventListener('resize', () => {
-          const oldFitScale = fitScale;
-          const maxW = window.innerWidth - 60;
-          const maxH = window.innerHeight - 100;
-          fitScale = Math.min(maxW / naturalW, maxH / naturalH, 1);
-          if (Math.abs(scale - oldFitScale) < 0.01) {
-            scale = fitScale;
-            applyScale();
-          }
-        });
+        window.addEventListener('resize', fitToWindow);
         
-        document.addEventListener('wheel', function(e) {
-          if (e.ctrlKey) {
-            e.preventDefault();
-            if (e.deltaY < 0) zoomIn();
-            else zoomOut();
-          }
+        // ホイールで拡大縮小（Ctrlなしでも可能に）
+        wrapper.addEventListener('wheel', function(e) {
+          e.preventDefault();
+          if (e.deltaY < 0) zoomIn();
+          else zoomOut();
         }, { passive: false });
         
         // ドラッグ処理
-        document.addEventListener('mousedown', function(e) {
-          if (e.button !== 0) return; // 左クリックのみ
-          if (e.target.closest('.controls')) return; // コントロール上は無視
-          
+        wrapper.addEventListener('mousedown', function(e) {
+          if (e.button !== 0) return;
           isDragging = true;
           startX = e.clientX;
           startY = e.clientY;
-          scrollLeft = window.scrollX;
-          scrollTop = window.scrollY;
-          document.body.classList.add('dragging');
+          startPanX = panX;
+          startPanY = panY;
+          wrapper.classList.add('dragging');
           e.preventDefault();
         });
         
         document.addEventListener('mousemove', function(e) {
           if (!isDragging) return;
-          
-          const dx = e.clientX - startX;
-          const dy = e.clientY - startY;
-          window.scrollTo(scrollLeft - dx, scrollTop - dy);
+          panX = startPanX + (e.clientX - startX);
+          panY = startPanY + (e.clientY - startY);
+          applyTransform();
         });
         
         document.addEventListener('mouseup', function() {
           isDragging = false;
-          document.body.classList.remove('dragging');
-        });
-        
-        document.addEventListener('mouseleave', function() {
-          isDragging = false;
-          document.body.classList.remove('dragging');
+          wrapper.classList.remove('dragging');
         });
       </script>
     </body>
@@ -245,7 +226,7 @@ export function openImageInNewWindow(image: ImageInfo): void {
  * PDFのクリップ用の専用関数
  */
 export function openClipInNewWindow(clip: Clip): void {
-  const newWindow = window.open('', '_blank', 'width=700,height=600,resizable=yes,scrollbars=yes')
+  const newWindow = window.open('', '_blank', 'width=700,height=600,resizable=yes,scrollbars=no')
   if (!newWindow) {
     alert('ポップアップがブロックされました。ポップアップを許可してください。')
     return
@@ -261,13 +242,13 @@ export function openClipInNewWindow(clip: Clip): void {
         html, body {
           width: 100%;
           height: 100%;
-          overflow: auto;
+          overflow: hidden;
           background: #1a1a2e;
         }
         body {
           display: flex;
-          flex-direction: column;
-          padding: 10px;
+          align-items: center;
+          justify-content: center;
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
         .controls {
@@ -305,36 +286,37 @@ export function openClipInNewWindow(clip: Clip): void {
           min-width: 60px;
           text-align: center;
         }
-        .image-container {
-          flex: 1;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 50px 20px 20px;
-          min-width: fit-content;
-        }
-        .image-container.zoomed {
-          align-items: flex-start;
-          justify-content: flex-start;
-        }
-        img {
-          display: block;
-          border-radius: 4px;
-          box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        .image-wrapper {
+          position: relative;
+          width: 100%;
+          height: 100%;
+          overflow: hidden;
           cursor: grab;
         }
-        img:active {
+        .image-wrapper:active, .image-wrapper.dragging {
           cursor: grabbing;
         }
+        img {
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          border-radius: 4px;
+          box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+          user-select: none;
+          -webkit-user-drag: none;
+        }
         .info {
+          position: fixed;
+          bottom: 40px;
+          left: 50%;
+          transform: translateX(-50%);
           color: #fff;
-          padding: 10px;
           text-align: center;
         }
         .note {
           color: #aaa;
           font-size: 14px;
-          margin-top: 8px;
+          margin-top: 5px;
         }
         .hint {
           position: fixed;
@@ -345,13 +327,6 @@ export function openClipInNewWindow(clip: Clip): void {
           font-size: 12px;
           pointer-events: none;
         }
-        body.dragging {
-          cursor: grabbing !important;
-          user-select: none;
-        }
-        body.dragging img {
-          cursor: grabbing !important;
-        }
       </style>
     </head>
     <body>
@@ -361,25 +336,27 @@ export function openClipInNewWindow(clip: Clip): void {
         <button onclick="zoomIn()">+</button>
         <button onclick="resetZoom()">↺</button>
       </div>
-      <div class="image-container" id="container">
-        <img id="main-img" src="${clip.image_data}" alt="クリップ画像" draggable="false" ondragstart="return false" />
+      <div class="image-wrapper" id="wrapper">
+        <img id="main-img" src="${clip.image_data}" alt="クリップ画像" draggable="false" />
       </div>
       <div class="info">
         <strong>ページ ${clip.page_num}</strong>
         ${clip.note ? `<div class="note">${clip.note}</div>` : ''}
       </div>
-      <div class="hint">ドラッグで移動 / Ctrl+ホイールで拡大縮小</div>
+      <div class="hint">ドラッグで移動 / ホイールで拡大縮小</div>
       <script>
         const img = document.getElementById('main-img');
-        const container = document.getElementById('container');
+        const wrapper = document.getElementById('wrapper');
         const zoomDisplay = document.getElementById('zoom-level');
+        
         let scale = 1;
+        let panX = 0;
+        let panY = 0;
         let naturalW, naturalH;
         let fitScale = 1;
         
-        // ドラッグ用変数
         let isDragging = false;
-        let startX, startY, scrollLeft, scrollTop;
+        let startX, startY, startPanX, startPanY;
         
         img.onload = function() {
           naturalW = img.naturalWidth;
@@ -388,91 +365,67 @@ export function openClipInNewWindow(clip: Clip): void {
         };
         
         function fitToWindow() {
-          const maxW = window.innerWidth - 60;
-          const maxH = window.innerHeight - 120;
+          const maxW = window.innerWidth - 40;
+          const maxH = window.innerHeight - 80;
           const ratioW = maxW / naturalW;
           const ratioH = maxH / naturalH;
           fitScale = Math.min(ratioW, ratioH, 1);
           scale = fitScale;
-          applyScale();
+          panX = 0;
+          panY = 0;
+          applyTransform();
         }
         
-        function applyScale() {
+        function applyTransform() {
           img.style.width = (naturalW * scale) + 'px';
           img.style.height = (naturalH * scale) + 'px';
+          img.style.transform = 'translate(calc(-50% + ' + panX + 'px), calc(-50% + ' + panY + 'px))';
           zoomDisplay.textContent = Math.round(scale * 100) + '%';
-          
-          if (scale > fitScale * 1.1) {
-            container.classList.add('zoomed');
-          } else {
-            container.classList.remove('zoomed');
-          }
         }
         
         function zoomIn() {
-          scale = Math.min(5, scale + 0.25);
-          applyScale();
+          scale = Math.min(10, scale * 1.25);
+          applyTransform();
         }
         
         function zoomOut() {
-          scale = Math.max(0.1, scale - 0.25);
-          applyScale();
+          scale = Math.max(0.1, scale / 1.25);
+          applyTransform();
         }
         
         function resetZoom() {
           fitToWindow();
-          window.scrollTo(0, 0);
         }
         
-        window.addEventListener('resize', () => {
-          const oldFitScale = fitScale;
-          const maxW = window.innerWidth - 60;
-          const maxH = window.innerHeight - 120;
-          fitScale = Math.min(maxW / naturalW, maxH / naturalH, 1);
-          if (Math.abs(scale - oldFitScale) < 0.01) {
-            scale = fitScale;
-            applyScale();
-          }
-        });
+        window.addEventListener('resize', fitToWindow);
         
-        document.addEventListener('wheel', function(e) {
-          if (e.ctrlKey) {
-            e.preventDefault();
-            if (e.deltaY < 0) zoomIn();
-            else zoomOut();
-          }
+        wrapper.addEventListener('wheel', function(e) {
+          e.preventDefault();
+          if (e.deltaY < 0) zoomIn();
+          else zoomOut();
         }, { passive: false });
         
-        // ドラッグ処理
-        document.addEventListener('mousedown', function(e) {
+        wrapper.addEventListener('mousedown', function(e) {
           if (e.button !== 0) return;
-          if (e.target.closest('.controls')) return;
-          
           isDragging = true;
           startX = e.clientX;
           startY = e.clientY;
-          scrollLeft = window.scrollX;
-          scrollTop = window.scrollY;
-          document.body.classList.add('dragging');
+          startPanX = panX;
+          startPanY = panY;
+          wrapper.classList.add('dragging');
           e.preventDefault();
         });
         
         document.addEventListener('mousemove', function(e) {
           if (!isDragging) return;
-          
-          const dx = e.clientX - startX;
-          const dy = e.clientY - startY;
-          window.scrollTo(scrollLeft - dx, scrollTop - dy);
+          panX = startPanX + (e.clientX - startX);
+          panY = startPanY + (e.clientY - startY);
+          applyTransform();
         });
         
         document.addEventListener('mouseup', function() {
           isDragging = false;
-          document.body.classList.remove('dragging');
-        });
-        
-        document.addEventListener('mouseleave', function() {
-          isDragging = false;
-          document.body.classList.remove('dragging');
+          wrapper.classList.remove('dragging');
         });
       </script>
     </body>
