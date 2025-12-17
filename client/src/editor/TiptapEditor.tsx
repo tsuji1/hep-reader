@@ -268,9 +268,20 @@ export default function TiptapEditor({
     }
   }, [editor])
 
-  // tiptap-contentをクリックしたらエディタにフォーカス
-  const handleContentClick = useCallback(() => {
+  // tiptap-contentをクリックしたらエディタにフォーカス（但し選択中は除く）
+  const handleContentClick = useCallback((e: React.MouseEvent) => {
     if (editor && editable) {
+      // If there's already a selection (e.g., from find), don't override it
+      const selection = window.getSelection()
+      if (selection && selection.toString().length > 0) {
+        return
+      }
+      // Only focus end if clicking on empty space
+      const target = e.target as HTMLElement
+      if (target.closest('.ProseMirror')) {
+        // Already inside the editor, let natural click work
+        return
+      }
       editor.commands.focus('end')
     }
   }, [editor, editable])

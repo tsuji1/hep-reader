@@ -171,14 +171,16 @@ export default function FindReplacePanel({ editor, onClose }: FindReplacePanelPr
     }
 
     const selectedText = selection.toString()
-    const regex = getRegex()
-    if (!regex) return
 
     // Check if selection matches the search pattern
     let isMatch = false
     if (useRegex) {
-      const testRegex = new RegExp(`^${findText}$`, caseSensitive ? '' : 'i')
-      isMatch = testRegex.test(selectedText)
+      try {
+        const testRegex = new RegExp(`^${findText}$`, caseSensitive ? '' : 'i')
+        isMatch = testRegex.test(selectedText)
+      } catch {
+        isMatch = false
+      }
     } else {
       const compareA = caseSensitive ? selectedText : selectedText.toLowerCase()
       const compareB = caseSensitive ? findText : findText.toLowerCase()
@@ -186,25 +188,25 @@ export default function FindReplacePanel({ editor, onClose }: FindReplacePanelPr
     }
 
     if (isMatch) {
-      // Replace the selection
+      // Replace the selection using Tiptap API
       const replacementText = useRegex 
         ? selectedText.replace(new RegExp(findText, caseSensitive ? '' : 'i'), replaceText)
         : replaceText
-      document.execCommand('insertText', false, replacementText)
+      
+      // Delete selection and insert new text
+      editor.chain().focus().deleteSelection().insertContent(replacementText).run()
       
       // Re-find matches and move to next
       setTimeout(() => {
         findAllMatches()
-        if (matches.length > 1) {
-          const nextIndex = Math.min(currentMatch - 1, matches.length - 2)
-          selectMatch(Math.max(0, nextIndex))
-        }
-      }, 50)
+        // Try to find next match
+        selectMatch(Math.max(0, currentMatch - 1))
+      }, 100)
     } else {
       // Selection doesn't match, find next match
       handleFindNext()
     }
-  }, [editor, findText, replaceText, useRegex, caseSensitive, matches, currentMatch, getRegex, selectMatch, handleFindNext, findAllMatches])
+  }, [editor, findText, replaceText, useRegex, caseSensitive, matches, currentMatch, selectMatch, handleFindNext, findAllMatches])
 
   const handleReplaceAll = useCallback(() => {
     if (!editor || !findText) return
