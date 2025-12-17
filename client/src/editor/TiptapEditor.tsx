@@ -6,8 +6,9 @@ import { Markdown } from '@tiptap/markdown'
 import { EditorContent, useEditor, type Editor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import 'katex/dist/katex.min.css'
-import { useCallback, useEffect } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import './editor.css'
+import FindReplacePanel from './FindReplacePanel'
 
 interface TiptapEditorProps {
   content: string
@@ -19,7 +20,7 @@ interface TiptapEditorProps {
 }
 
 // ツールバーボタンコンポーネント
-function MenuBar({ editor }: { editor: Editor | null }) {
+function MenuBar({ editor, onFindReplace }: { editor: Editor | null; onFindReplace: () => void }) {
   if (!editor) return null
 
   return (
@@ -168,6 +169,14 @@ function MenuBar({ editor }: { editor: Editor | null }) {
       >
         ↪
       </button>
+      <span className="toolbar-divider" />
+      <button
+        type="button"
+        onClick={onFindReplace}
+        title="検索と置換 (Ctrl+H)"
+      >
+        🔍
+      </button>
     </div>
   )
 }
@@ -180,6 +189,8 @@ export default function TiptapEditor({
   className = '',
   markdown = false
 }: TiptapEditorProps) {
+  const [showFindReplace, setShowFindReplace] = useState(false)
+  
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -231,6 +242,18 @@ export default function TiptapEditor({
     }
   }, [editable, editor])
 
+  // Ctrl+H for find/replace
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+        e.preventDefault()
+        setShowFindReplace(prev => !prev)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   const addImage = useCallback(() => {
     const url = window.prompt('画像URLを入力:')
     if (url && editor) {
@@ -256,7 +279,7 @@ export default function TiptapEditor({
     <div className={`tiptap-editor ${className}`}>
       {editable && (
         <div className="tiptap-toolbar-container">
-          <MenuBar editor={editor} />
+          <MenuBar editor={editor} onFindReplace={() => setShowFindReplace(prev => !prev)} />
           <div className="tiptap-toolbar-extra">
             <button type="button" onClick={addImage} title="画像を追加">
               🖼
@@ -267,6 +290,12 @@ export default function TiptapEditor({
           </div>
         </div>
       )}
+      {showFindReplace && editable && (
+        <FindReplacePanel 
+          editor={editor} 
+          onClose={() => setShowFindReplace(false)} 
+        />
+      )}
       <div className="tiptap-content-wrapper" onClick={handleContentClick}>
         <EditorContent editor={editor} className="tiptap-content" />
       </div>
@@ -276,5 +305,6 @@ export default function TiptapEditor({
 
 // エディタインスタンスを外部から使用するためのhook
 export { useEditor, type Editor }
+
 
 
