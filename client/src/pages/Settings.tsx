@@ -34,8 +34,8 @@ const providers: ProviderConfig[] = [
   {
     name: 'OpenAI ChatGPT',
     id: 'openai',
-    defaultModel: 'gpt-4o-mini',
-    models: ['gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
+    defaultModel: 'gpt-5-mini-2025-08-07',
+    models: ['gpt-5-mini-2025-08-07', 'gpt-4o-mini', 'gpt-4o', 'gpt-4-turbo'],
     color: '#10a37f'
   }
 ]

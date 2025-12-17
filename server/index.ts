@@ -53,7 +53,7 @@ async function callAi(prompt: string): Promise<string | null> {
 
   try {
     if (provider === 'openai') {
-      const modelName = model || 'gpt-4o-mini';
+      const modelName = model || 'gpt-5-mini-2025-08-07';
       const apiRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -2518,7 +2518,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
       : 'あなたは読書アシスタントです。ユーザーの質問に答えてください。';
 
     if (provider === 'openai') {
-      const model = setting.model || 'gpt-4o-mini';
+      const model = setting.model || 'gpt-5-mini-2025-08-07';
       const apiRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
