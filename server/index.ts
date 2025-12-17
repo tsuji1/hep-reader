@@ -2536,7 +2536,7 @@ app.post('/api/ai/chat', async (req: Request, res: Response) => {
       });
       const data = await apiRes.json() as { error?: { message: string }; choices?: { message?: { content?: string } }[] };
       if (data.error) {
-        throw new Error(data.error.message);
+        throw new Error(`${data.error.message} (Status: ${apiRes.status})`);
       }
       response = data.choices?.[0]?.message?.content || 'No response';
     } else if (provider === 'claude') {
