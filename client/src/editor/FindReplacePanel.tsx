@@ -216,19 +216,34 @@ export default function FindReplacePanel({ editor, onClose }: FindReplacePanelPr
 
     const html = editor.getHTML()
     let count = 0
+    let newHtml = html
 
-    // Split by HTML tags and only replace in text content
-    const parts = html.split(/(<[^>]+>)/g)
-    const newHtml = parts.map(part => {
-      if (part.startsWith('<') && part.endsWith('>')) {
-        // This is an HTML tag, don't modify
-        return part
+    // Check if the pattern might span HTML tags (e.g., contains link patterns)
+    // If so, try to replace in the full HTML first
+    if (useRegex) {
+      // For regex mode, first try replacing in full HTML
+      const fullMatches = html.match(regex)
+      if (fullMatches && fullMatches.length > 0) {
+        count = fullMatches.length
+        newHtml = html.replace(regex, replaceText)
       }
-      // This is text content, replace
-      const partMatches = part.match(regex)
-      if (partMatches) count += partMatches.length
-      return part.replace(regex, replaceText)
-    }).join('')
+    }
+
+    // If no matches found in full HTML or not regex mode, try text-only replacement
+    if (count === 0) {
+      // Split by HTML tags and only replace in text content
+      const parts = html.split(/(<[^>]+>)/g)
+      newHtml = parts.map(part => {
+        if (part.startsWith('<') && part.endsWith('>')) {
+          // This is an HTML tag, don't modify
+          return part
+        }
+        // This is text content, replace
+        const partMatches = part.match(regex)
+        if (partMatches) count += partMatches.length
+        return part.replace(regex, replaceText)
+      }).join('')
+    }
 
     if (count > 0) {
       editor.commands.setContent(newHtml)
@@ -239,7 +254,7 @@ export default function FindReplacePanel({ editor, onClose }: FindReplacePanelPr
     } else {
       alert('一致するテキストが見つかりませんでした')
     }
-  }, [editor, findText, replaceText, getRegex])
+  }, [editor, findText, replaceText, useRegex, getRegex])
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
