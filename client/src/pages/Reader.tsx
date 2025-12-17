@@ -384,8 +384,11 @@ function Reader(): JSX.Element {
     if (vocabularies.length === 0) return html
 
     let result = html
+    // 最長一致を優先するため、用語を長さで降順にソート
+    const sortedVocabs = [...vocabularies].sort((a, b) => (b.term?.length || 0) - (a.term?.length || 0))
+    
     // タグ内のテキストを置換しないよう、正規表現で処理
-    for (const vocab of vocabularies) {
+    for (const vocab of sortedVocabs) {
       // 無効なデータをスキップ
       if (!vocab || !vocab.term || !vocab.description) continue
 
